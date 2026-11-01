@@ -1,6 +1,6 @@
 # Verify a `vibe-check --json` snapshot carries real, plausible data.
 # Dependency-free awk (works on gawk, mawk and macOS/BSD awk) so it can run on
-# every CI platform and inside a FreeBSD VM.
+# every CI platform.
 #
 #   vibe-check --json | awk -f scripts/verify-snapshot.awk
 BEGIN {

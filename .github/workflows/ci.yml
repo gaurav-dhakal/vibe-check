@@ -34,29 +34,6 @@ jobs:
         shell: bash
         run: awk -f scripts/verify-snapshot.awk < snapshot.json
 
-  # Nothing here cross-executes a FreeBSD binary, so boot one and run it for real.
-  freebsd:
-    runs-on: ubuntu-latest
-    continue-on-error: true   # nested-virt runners are occasionally unavailable
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: build a static FreeBSD binary
-        run: CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -trimpath -o vibe-check-freebsd .
-      - name: run it inside a FreeBSD 14 VM
-        uses: vmactions/freebsd-vm@v1
-        with:
-          release: '14'
-          usesh: true
-          run: |
-            set -e
-            kldload tmpfs 2>/dev/null || true
-            ./vibe-check-freebsd --version
-            ./vibe-check-freebsd --json | awk -f scripts/verify-snapshot.awk
-
   cross:
     runs-on: ubuntu-latest
     steps:
@@ -68,6 +45,6 @@ jobs:
       - name: every shipped target must compile
         run: |
           set -euo pipefail
-          for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 freebsd/amd64; do
+          for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
             GOOS=${t%/*} GOARCH=${t#*/} CGO_ENABLED=0 go build -o /dev/null . && echo "ok  $t"
           done

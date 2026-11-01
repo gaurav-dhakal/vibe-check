@@ -17,9 +17,8 @@ command -v tar  >/dev/null 2>&1 || die "tar is required"
 case "$(uname -s)" in
   Linux)   os=linux ;;
   Darwin)  os=darwin ;;
-  FreeBSD) os=freebsd ;;
   MINGW*|MSYS*|CYGWIN*|Windows_NT) die "on Windows use:  irm https://raw.githubusercontent.com/$REPO/main/install.ps1 | iex" ;;
-  *) die "unsupported OS: $(uname -s) — see the README for building from source" ;;
+  *) die "unsupported OS: $(uname -s) — vibe-check ships Linux and macOS binaries; see the README for building from source" ;;
 esac
 case "$(uname -m)" in
   x86_64|amd64)          arch=amd64 ;;

@@ -29,7 +29,7 @@ Captured from a real 120×40 run (narrowed here so it reads in a browser).
 
 ## Install
 
-**Linux / macOS / FreeBSD**
+**Linux / macOS**
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/gaurav-dhakal/vibe-check/main/install.sh | bash
@@ -174,14 +174,13 @@ about 1.6s.
 | OS | Notes |
 |---|---|
 | Linux | Full feature set, `/proc` fast path (per-process CPU, FD counts, socket-inode ownership, file-nr limits) |
-| macOS | gopsutil collectors; orphan detection and port list included |
-| Windows | gopsutil + `netstat`-free listener enumeration, named-pipe Docker, no POSIX signals (kills use the process API) |
-| FreeBSD | Builds and runs; hw.model for the CPU string, no `/proc`-style FD totals |
+| macOS | Kernel collectors via gopsutil (no `/proc`): per-process CPU, memory, listeners with PID ownership, orphan detection, disk crawl |
+| Windows | Listener enumeration without `netstat`, Docker over the named pipe, kills through the process API (no POSIX signals); hardlinked files count once per name |
 
 This is not theoretical: CI runs the headless snapshot on Linux, macOS and Windows runners and
-inside a FreeBSD 14 VM, and fails the build unless hostname, kernel, CPU model, memory, process
-count and the disk crawl all come back with plausible values. Where a metric has no portable source
-it is reported as unavailable instead of being faked.
+fails the build unless hostname, kernel, CPU model, memory, process count and the disk crawl all come
+back with plausible values. Where a metric has no portable source it is reported as unavailable
+instead of being faked.
 
 ## Development
 

@@ -50,7 +50,7 @@ build() {
 
 echo "building vibe-check $VERSION"
 for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 \
-         windows/amd64 windows/arm64 freebsd/amd64; do
+         windows/amd64 windows/arm64; do
   build "${t%/*}" "${t#*/}"
 done
 
