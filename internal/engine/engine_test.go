@@ -14,11 +14,16 @@ func TestUpdatePortsViaEngine(t *testing.T) {
 	e.ctx = context.Background()
 	e.updatePorts()
 	s := e.Snapshot()
-	t.Logf("ports after updatePorts: %d", len(s.Ports))
-	if len(s.Ports) == 0 {
-		l, err := scanListeningSockets()
-		t.Logf("raw scan -> %d listens, err=%v", len(l), err)
-		t.Fatalf("engine stored 0 ports")
+	raw, err := e.collectListeners()
+	if err != nil {
+		t.Fatalf("collectListeners: %v", err)
+	}
+	t.Logf("engine stored %d ports, kernel reported %d listeners", len(s.Ports), len(raw))
+	if len(raw) == 0 {
+		t.Skip("this host has no LISTEN sockets to check against")
+	}
+	if len(s.Ports) < len(raw) {
+		t.Fatalf("engine stored %d ports but the kernel reported %d listeners", len(s.Ports), len(raw))
 	}
 	for _, p := range s.Ports {
 		t.Logf("  %d %s http=%v", p.Port, p.Proto, p.HTTP)
