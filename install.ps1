@@ -12,7 +12,9 @@ $InstallDir = if ($env:VIBE_CHECK_INSTALL_DIR) { $env:VIBE_CHECK_INSTALL_DIR } `
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 function Write-Note($m) { Write-Host "» $m" -ForegroundColor Cyan }
-function Die($m)        { Write-Host "✘ $m" -ForegroundColor Red; exit 1 }
+# throw, never exit: this file is designed to be piped into iex, where `exit`
+# would close the user's shell out from under them.
+function Die($m)        { Write-Host "✘ $m" -ForegroundColor Red; throw 'vibe-check install failed' }
 
 try {
   $arch = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
