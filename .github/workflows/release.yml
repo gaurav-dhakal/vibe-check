@@ -30,7 +30,7 @@ jobs:
 
       - name: build assets
         env:
-          VERSION: ${{ github.event.inputs.version }}
+          VERSION: ${{ github.event_name == 'push' && github.ref_name || github.event.inputs.version }}
         run: |
           if [ -n "$VERSION" ]; then
             case "$VERSION" in
@@ -40,6 +40,19 @@ jobs:
           fi
           sudo apt-get update && sudo apt-get install -y zip
           ./scripts/build-release.sh
+
+      # install.sh derives the asset name from the tag it resolved, so a name
+      # that does not carry the tag version is a broken release, not a cosmetic one.
+      - name: asset names must match the tag
+        if: github.event_name == 'push'
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          want="${REF#v}"
+          ls dist | grep -q "vibe-check_${want}_linux_amd64.tar.gz" || {
+            echo "dist/ has no assets named for $want:"; ls dist; exit 1; }
+          echo "assets are named for $want"
 
       - name: publish release
         uses: softprops/action-gh-release@v2

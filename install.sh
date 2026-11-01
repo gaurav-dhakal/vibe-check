@@ -28,37 +28,44 @@ case "$(uname -m)" in
 esac
 
 api="https://api.github.com/repos/$REPO"
+# `|| true` on every fetch: a 404 here is an expected state (no release yet, or a
+# bad pin), and pipefail would otherwise abort before the message below.
 if [ "$WANT_VERSION" = "latest" ]; then
-  # `|| true` everywhere: a 404 here is an expected state (no release yet), and
-  # pipefail would otherwise abort before the message below.
-  latest=$(curl -fsSL "$api/releases/latest" 2>/dev/null || true)
-  tag=$(printf '%s\n' "$latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | sed -n 1p) || true
-  [ -n "${tag:-}" ] || die "no published release found for $REPO (or the GitHub API rate limit bit).
-  With Go installed you can build from source:  go install github.com/$REPO@latest"
+  rel=$(curl -fsSL "$api/releases/latest" 2>/dev/null || true)
 else
-  tag="$WANT_VERSION"
-  case "$tag" in v*) ;; *) tag="v$tag" ;; esac
+  pin="$WANT_VERSION"; case "$pin" in v*) ;; *) pin="v$pin" ;; esac
+  rel=$(curl -fsSL "$api/releases/tags/$pin" 2>/dev/null || true)
 fi
+[ -n "${rel:-}" ] || die "no release '$WANT_VERSION' found for $REPO (or the GitHub API rate limit bit).
+  With Go installed you can build from source:  go install github.com/$REPO@latest"
 
-ver="${tag#v}"
-asset="vibe-check_${ver}_${os}_${arch}.tar.gz"
-url="https://github.com/$REPO/releases/download/$tag/$asset"
+# Take the asset list from the release itself rather than constructing a name:
+# a tag and the version baked into the filenames can legitimately differ.
+urls=$(printf '%s\n' "$rel" | grep -o '"browser_download_url": *"[^"]*"' | sed 's/.*"\(http[^"]*\)"$/\1/' || true)
+asset_url=$(printf '%s\n' "$urls" | grep -E "_${os}_${arch}\.tar\.gz$" | sed -n 1p || true)
+[ -n "$asset_url" ] || die "no release asset for $os/$arch — available:
+$(printf '%s\n' "$urls" | sed 's#.*/##' | sed 's/^/    /')"
+asset=${asset_url##*/}
+tag=$(printf '%s' "$asset_url" | sed 's#.*/download/##; s#/.*##')
+sums_url=$(printf '%s\n' "$urls" | grep -E '/checksums\.txt$' | sed -n 1p || true)
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 say "installing vibe-check $tag ($os/$arch)"
-curl -fSL --progress-bar -o "$tmp/$asset" "$url" || die "download failed: $url"
+curl -fSL --progress-bar -o "$tmp/$asset" "$asset_url" || die "download failed: $asset_url"
 
-# Verify against the release checksums when the asset list is reachable. Never
-# install an artifact we cannot account for.
+# Verify against the release checksums when they are reachable. Never install an
+# artifact we cannot account for.
 sha() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
   elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
   else printf ''; fi
 }
-want=$(curl -fsSL "https://github.com/$REPO/releases/download/$tag/checksums.txt" 2>/dev/null \
-       | awk -v a="$asset" '$2 == a {print $1}' || true)
+want=""
+if [ -n "${sums_url:-}" ]; then
+  want=$(curl -fsSL "$sums_url" 2>/dev/null | awk -v a="$asset" '$2 == a {print $1}' || true)
+fi
 if [ -n "$want" ]; then
   got=$(sha "$tmp/$asset")
   [ "$got" = "$want" ] || die "checksum mismatch for $asset — refusing to install (want $want, got ${got:-no sha256 tool})"

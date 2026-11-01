@@ -23,7 +23,7 @@ var (
 	interval  int
 	jsonOut   bool
 	noMouse   bool
-	version   = "0.1.0"
+	version   = "0.1.2"
 )
 
 var rootCmd = &cobra.Command{

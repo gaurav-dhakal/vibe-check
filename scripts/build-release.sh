@@ -6,7 +6,11 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-VERSION="${VERSION:-$(grep -m1 '^\s*version\s*=\s*"' cmd/root.go | sed 's/.*"\(.*\)".*/\1/')}"
+# Asset names must match the tag installers resolve, so prefer the tag over the
+# in-source default; the ldflags injection below uses the same value.
+VERSION="${VERSION:-$(git describe --tags --exact-match HEAD 2>/dev/null || true)}"
+VERSION="${VERSION#v}"
+[ -n "$VERSION" ] || VERSION="$(grep -m1 '^\s*version\s*=\s*"' cmd/root.go | sed 's/.*"\(.*\)".*/\1/')"
 DIST="$PWD/dist"
 rm -rf "$DIST"; mkdir -p "$DIST"
 

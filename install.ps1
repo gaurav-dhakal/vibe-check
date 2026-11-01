@@ -32,21 +32,25 @@ switch ($arch) {
 $api = "https://api.github.com/repos/$Repo"
 $headers = @{ 'User-Agent' = 'vibe-check-installer'; 'Accept' = 'application/vnd.github+json' }
 
-if ($WantVer -eq 'latest') {
-  try {
-    $rel = Invoke-RestMethod -Uri "$api/releases/latest" -Headers $headers
-    $tag = $rel.tag_name
-  } catch {
-    Die "no published release found for $Repo. If you have Go installed: go install github.com/$Repo@latest"
-  }
-} else {
-  $tag = if ($WantVer.StartsWith('v')) { $WantVer } else { "v$WantVer" }
-}
+if ($WantVer -eq 'latest') { $relUri = "$api/releases/latest" }
+else { $relUri = "$api/releases/tags/" + $(if ($WantVer.StartsWith('v')) { $WantVer } else { "v$WantVer" }) }
+
+try { $rel = Invoke-RestMethod -Uri $relUri -Headers $headers }
+catch { Die "no release '$WantVer' found for $Repo. If you have Go installed: go install github.com/$Repo@latest" }
+
+$tag = $rel.tag_name
 if (-not $tag) { Die 'could not resolve a release tag' }
 
-$ver   = $tag.TrimStart('v')
-$asset = "vibe-check_${ver}_windows_${archName}.zip"
-$url   = "https://github.com/$Repo/releases/download/$tag/$asset"
+# Pick the asset from the release itself: the version inside the filenames is
+# not guaranteed to match the tag.
+$assetObj = $rel.assets | Where-Object { $_.name -match "_windows_${archName}\.zip$" } | Select-Object -First 1
+if (-not $assetObj) {
+  $names = ($rel.assets | ForEach-Object { $_.name }) -join ', '
+  Die "no release asset for windows/$archName. Available: $names"
+}
+$asset = $assetObj.name
+$url   = $assetObj.browser_download_url
+$sumsObj = $rel.assets | Where-Object { $_.name -eq 'checksums.txt' } | Select-Object -First 1
 
 Write-Note "installing vibe-check $tag (windows/$archName)"
 
@@ -62,17 +66,21 @@ try {
 }
 
 # Verify against the release checksums when reachable; never install what we cannot account for.
-try {
-  $sums = (Invoke-WebRequest -Uri "https://github.com/$Repo/releases/download/$tag/checksums.txt").Content -split "`n"
-  $line = $sums | Where-Object { $_ -match [Regex]::Escape($asset) } | Select-Object -First 1
-  if ($line) {
-    $want = ($line -split '\s+')[0].ToLower()
-    $got = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLower()
-    if ($want -ne $got) { Die "checksum mismatch for $asset — refusing to install (expected $want, got $got)" }
-    Write-Note 'sha256 verified'
-  } else { Write-Warning 'asset missing from checksums.txt; installed unverified' }
-} catch {
-  Write-Warning 'checksums.txt unavailable; installed unverified'
+if ($sumsObj) {
+  try {
+    $sums = (Invoke-WebRequest -Uri $sumsObj.browser_download_url).Content -split "`n"
+    $line = $sums | Where-Object { $_ -match [Regex]::Escape($asset) } | Select-Object -First 1
+    if ($line) {
+      $want = ($line -split '\s+')[0].ToLower()
+      $got = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLower()
+      if ($want -ne $got) { Die "checksum mismatch for $asset — refusing to install (expected $want, got $got)" }
+      Write-Note 'sha256 verified'
+    } else { Write-Warning 'asset missing from checksums.txt; installed unverified' }
+  } catch {
+    Write-Warning 'checksums.txt unavailable; installed unverified'
+  }
+} else {
+  Write-Warning 'this release has no checksums.txt; installed unverified'
 }
 
 Expand-Archive -Path $zip -DestinationPath $stage -Force
