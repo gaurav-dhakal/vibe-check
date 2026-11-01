@@ -15,3 +15,7 @@ func linkInfo(info fs.FileInfo) (uint64, uint64) {
 	}
 	return 0, 1
 }
+
+// canFingerprintLinks: POSIX stat(2) hands us ino+nlink, so a size sweep can
+// match du exactly.
+const canFingerprintLinks = true

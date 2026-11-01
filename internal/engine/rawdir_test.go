@@ -148,6 +148,9 @@ func TestMeasureDirHardlinks(t *testing.T) {
 	if err := os.Link(filepath.Join(root, "a"), filepath.Join(root, "b")); err != nil {
 		t.Skipf("hardlinks unavailable: %v", err)
 	}
+	if !canFingerprintLinks {
+		t.Skip("platform exposes no inode fingerprint, so links cannot be deduped here")
+	}
 	size, files := measureDir(context.Background(), root, nil)
 	if want := uint64(len(body)); size != want || files != 1 {
 		t.Errorf("measureDir = %d bytes/%d files, want %d/1", size, files, want)

@@ -114,7 +114,9 @@ pass `orphan_min_age_sec` and `orphan_min_rss_mb`, so the list stays honest rath
 `dist`, `build`, … with a concurrent, *low-priority* engine: zero-allocation `getdents64` reads on
 Linux plus a shared duty-cycle limiter pinned to a fraction of one core. It publishes results
 incrementally, so you see sizes while it still walks. Sizes are hardlink-aware and match
-`du --apparent-size` exactly. Purge runs a concurrent delete engine with progress.
+`du --apparent-size` exactly on Linux and macOS (NTFS gives no cheap inode fingerprint, so on Windows
+a file reached through two hardlinks counts twice). Purge runs a concurrent delete engine with
+progress.
 
 **Port mapper.** Reads `/proc/net/tcp` / `tcp6` (and the platform equivalent elsewhere), resolves
 each socket inode to its owning process, and probes listeners with a non-blocking synthetic HTTP
