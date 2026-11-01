@@ -1,0 +1,49 @@
+name: release
+
+# Push a tag (v0.1.1) and every platform asset lands on the GitHub release that
+# install.sh / install.ps1 download.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'release version without the v prefix (defaults to the version in cmd/root.go)'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: test
+        run: go test ./... -count=1
+
+      - name: build assets
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ -n "$VERSION" ]; then
+            case "$VERSION" in
+              *[!0-9a-zA-Z._-]*) echo "refusing unsafe version string: $VERSION"; exit 1 ;;
+            esac
+            export VERSION
+          fi
+          sudo apt-get update && sudo apt-get install -y zip
+          ./scripts/build-release.sh
+
+      - name: publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_missing_files: true

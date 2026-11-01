@@ -1,0 +1,28 @@
+# release artifacts
+/dist/
+*.tar.gz
+*.zip
+
+# local build output
+/vibe-check
+/vcheck
+*.exe
+
+# editor / tooling noise
+/.qoder/
+.idea/
+.vscode/
+*.swp
+
+# test + profiling output
+*.test
+*.out
+coverage.*
+*.prof
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# user config is not part of the repo
+config.toml
