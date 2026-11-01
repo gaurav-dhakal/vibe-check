@@ -19,6 +19,7 @@
 *.out
 coverage.*
 *.prof
+snapshot.json
 
 # OS junk
 .DS_Store
