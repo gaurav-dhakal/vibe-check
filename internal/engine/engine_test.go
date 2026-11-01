@@ -37,8 +37,22 @@ func TestUpdateProcsSysPortsRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	e.Run(ctx)
-	time.Sleep(2 * time.Second)
-	s := e.Snapshot()
+
+	// Poll instead of sleeping a fixed slice: the first tick is immediate, but
+	// a shared CI runner can take seconds to enumerate processes.
+	var s Snapshot
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		s = e.Snapshot()
+		if s.Sys.Hostname != "" && len(s.Procs) >= 10 && len(s.Ports) > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
 	if s.Sys.Hostname == "" {
 		t.Errorf("sys loop failed: empty hostname")
 	}
