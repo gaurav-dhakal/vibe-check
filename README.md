@@ -285,9 +285,6 @@ Report vulnerabilities privately — see [SECURITY.md](SECURITY.md).
 
 ## About
 
-**Vibecoded.** This project was built pair-programming with an AI agent (Qoder) across the whole
-codebase — engine, UI, packaging and CI — with humans making the calls on architecture, naming and
-"no, that number has to be real". The commit messages and comments reflect that: plenty of them record
-a measurement that contradicted an assumption, which is the only kind of debugging that worked.
+**Vibecoded.** This project was built pair-programming with an AI agent.
 
 MIT licensed, see [LICENSE](LICENSE).
