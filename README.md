@@ -76,8 +76,9 @@ vibe-check --help
 Subcommands: `vibe-check config init` writes the default config and prints its path.
 `--version` reports the release.
 
-Nothing leaves your machine. There is no telemetry, no update pings, no network calls except the
-loopback HTTP health probes on ports you already have listening.
+Nothing leaves your machine. There is no telemetry, no update pings, and no outbound requests — the
+only connections it makes are the HTTP HEAD health probes to sockets already listening on your own
+machine.
 
 ## Keys
 
