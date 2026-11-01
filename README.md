@@ -161,9 +161,10 @@ reads them at up to 60 FPS. Redraws are diff-based across a dual buffer, so an i
 almost no writes and never flickers. Colour depth is negotiated (truecolor → 256 → 16) and the
 collectors on Linux read `/proc` directly rather than shelling out.
 
-Measured on a 12-core Linux desktop: ~4% of one core at idle, with a ~47% burst for the first ten
-seconds while the initial crawl runs; steady-state after that stays in the single digits. `--json`
-runs the scan at full speed and returns a complete snapshot in about 1.6s.
+Measured on a laptop-class 8-core Linux desktop (10-second CPU buckets of a live run): a 27% burst
+of one core during the first ten seconds while the initial crawl runs — higher on a cold page cache —
+then 2.8–4.2% at steady idle. `--json` runs the scan at full speed and returns a complete snapshot in
+about 1.6s.
 
 ## Platforms
 
