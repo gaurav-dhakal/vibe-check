@@ -25,6 +25,38 @@ jobs:
       - run: go build ./...
       - run: go run . --version
 
+      # The real question is whether it can read this operating system, so run
+      # the headless path on every platform and check the numbers are plausible.
+      - name: collect a snapshot on ${{ matrix.os }}
+        shell: bash
+        run: go run . --json > snapshot.json
+      - name: snapshot must contain real telemetry
+        shell: bash
+        run: awk -f scripts/verify-snapshot.awk < snapshot.json
+
+  # Nothing here cross-executes a FreeBSD binary, so boot one and run it for real.
+  freebsd:
+    runs-on: ubuntu-latest
+    continue-on-error: true   # nested-virt runners are occasionally unavailable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: build a static FreeBSD binary
+        run: CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -trimpath -o vibe-check-freebsd .
+      - name: run it inside a FreeBSD 14 VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: '14'
+          usesh: true
+          run: |
+            set -e
+            kldload tmpfs 2>/dev/null || true
+            ./vibe-check-freebsd --version
+            ./vibe-check-freebsd --json | awk -f scripts/verify-snapshot.awk
+
   cross:
     runs-on: ubuntu-latest
     steps:
