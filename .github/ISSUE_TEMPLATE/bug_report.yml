@@ -1,0 +1,64 @@
+name: Bug report
+description: A number, a key or a platform is not behaving
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. The most useful thing you can paste here is the headless snapshot, because it shows
+        exactly what the engine read: `vibe-check --json > snap.json` (it contains paths and command
+        lines, so strip anything you do not want to share).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What the UI showed versus what you believe is true, and how you checked.
+      placeholder: |
+        Ports tab lists 3000 as LISTEN with pid 1234, but `ss -ltnp` says 5678.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1. run `vibe-check`
+        2. press …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: output of `vibe-check --version`
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      multiple: true
+      options: [Linux, macOS, Windows]
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS version, CPU arch, terminal emulator and TERM, and whether you use a container or VM.
+      render: text
+  - type: textarea
+    id: snapshot
+    attributes:
+      label: Snapshot
+      description: "`vibe-check --json`, stripped of anything sensitive."
+      render: json
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Before filing
+      options:
+        - label: I checked this against the tool a human would use (`ss`, `du`, `ps`, `docker ps`)
+          required: true
+        - label: I am not reporting a metric the UI shows as a dash (no source on this platform)
+          required: true

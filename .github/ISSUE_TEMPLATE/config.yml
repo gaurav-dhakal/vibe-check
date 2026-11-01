@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/gaurav-dhakal/vibe-check/security/advisories/new
+    about: Private report — never open a public issue for anything that leaks or damages.
+  - name: Usage question
+    url: https://github.com/gaurav-dhakal/vibe-check/discussions
+    about: How do I use X, why is a number this value, feature chat.

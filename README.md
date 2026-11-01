@@ -1,10 +1,21 @@
 # vibe-check
 
-A developer-machine TUI that answers the questions you keep re-asking with `ps`, `ss`, `du` and
-`docker ps` — in one screen, at 60 FPS, without ever spiking your CPU.
+**Live telemetry for your dev machine — processes, ports, containers and build junk in one 60 FPS
+pane, with one keypress to reclaim the RAM and disk your abandoned dev servers left behind.**
 
-Processes, ports, containers and build junk, live. Kill a forgotten dev server with one keypress.
-Purge a stale `node_modules` with another. Every number on screen comes from the kernel, not a guess.
+[![CI](https://github.com/gaurav-dhakal/vibe-check/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gaurav-dhakal/vibe-check/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/gaurav-dhakal/vibe-check?label=release)](https://github.com/gaurav-dhakal/vibe-check/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/gaurav-dhakal/vibe-check/total?label=downloads)](https://github.com/gaurav-dhakal/vibe-check/releases)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/gaurav-dhakal/vibe-check?label=go)](https://go.dev/)
+[![License MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Platforms](https://img.shields.io/badge/platforms-linux%20%C2%B7%20macOS%20%C2%B7%20windows-blue)](#platforms)
+
+You keep asking the same four questions about your own machine: *what is eating CPU, what is holding
+this port, what did I forget to kill, and where did my disk go.* `vibe-check` answers all four without
+leaving the terminal — reading the kernel directly, never guessing, and never costing more than a few
+percent of a core.
+
+Real capture from a live run (120×40, narrowed here to fit; values are actual, not a mockup):
 
 ```
 ● vibe-check  pop-os · linux/8c ▮ 12% cpu  ·  ▮ 52% mem  ·  up 1h39m
@@ -21,15 +32,31 @@ Purge a stale `node_modules` with another. Every number on screen comes from the
 │ i/o · fd                         ││ runtime             │
 │ disk read      40.0KB/s ▁███████ ││ ports 12 listeners  │
 │ net down       17.3KB/s ▁███████ ││ ✔ no orphaned devs  │
-│ fd 9544 · 38 avg/proc              ││ disk 80 dirs·13.6GB │
+│ fd 9544 · 38 avg/proc            ││ disk 80 dirs·13.6GB │
 ╰──────────────────────────────────╯╰─────────────────────╯
 ```
 
-Captured from a real 120×40 run (narrowed here so it reads in a browser).
+---
+
+## Contents
+
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Keyboard](#keyboard)
+- [Engines](#engines)
+- [Configuration](#configuration)
+- [Headless output](#headless-output)
+- [Accuracy](#accuracy)
+- [Performance](#performance)
+- [Platforms](#platforms)
+- [Development](#development)
+- [Contributing](#contributing)
+- [Security](#security)
+- [About](#about)
 
 ## Install
 
-**Linux / macOS**
+**Linux and macOS**
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/gaurav-dhakal/vibe-check/main/install.sh | bash
@@ -41,154 +68,226 @@ curl -fsSL https://raw.githubusercontent.com/gaurav-dhakal/vibe-check/main/insta
 irm https://raw.githubusercontent.com/gaurav-dhakal/vibe-check/main/install.ps1 | iex
 ```
 
-Both install prebuilt release binaries, verify the release `checksums.txt`, and put the tool on your
-`PATH`. The binary installs under two names — `vibe-check` and the short `vcheck` — so either works.
+Each installer detects OS and architecture, downloads the matching
+[release](https://github.com/gaurav-dhakal/vibe-check/releases) asset, verifies it against that
+release's `checksums.txt`, and installs two names — `vibe-check` and the shorter `vcheck`. No Go, no
+admin rights, no telemetry, no self-updater.
 
-Pin a version or location:
+| Want | Do |
+|---|---|
+| A pinned version | `VIBE_CHECK_VERSION=0.1.3 curl -fsSL .../install.sh \| bash` |
+| A different location | `VIBE_CHECK_INSTALL_DIR=/usr/local/bin …` (macOS users: sudo may be needed there) |
+| Go's own path | `go install github.com/gaurav-dhakal/vibe-check@latest` |
+| No network at all | `git clone` → `make build` → `./vibe-check` |
 
-```sh
-VIBE_CHECK_VERSION=0.1.0 VIBE_CHECK_INSTALL_DIR=/usr/local/bin curl -fsSL .../install.sh | bash
-```
-
-**From source** (needs Go 1.27+, no network beyond the module mirror on first build):
-
-```sh
-go install github.com/gaurav-dhakal/vibe-check@latest
-```
-
-## Run
+## Quick start
 
 ```sh
-vibe-check              # the TUI
-vcheck                  # same thing
-vibe-check --json       # one snapshot as JSON, no TUI, pipe-friendly
-vibe-check --help
+vibe-check                 # the TUI
+vcheck --json              # one snapshot as JSON, no TUI, pipe-friendly
+vcheck --theme tokyonight  # catppuccin | tokyonight | gruvbox
+vcheck config init         # write ~/.config/vibe-check/config.toml and print the path
 ```
 
-```
---config <path>      path to config.toml
---theme <name>       catppuccin | tokyonight | gruvbox
---interval <ms>      telemetry cadence, 250–1000
---json               print one snapshot and exit (runs the disk scan at full speed)
---no-mouse           disable terminal mouse tracking
-```
+| Flag | Meaning |
+|---|---|
+| `--config <path>` | use a specific config file |
+| `--theme <name>` | override the configured theme |
+| `--interval <ms>` | telemetry cadence, clamped to 250–1000 |
+| `--json` | print one snapshot and exit; the disk scan runs unthrottled |
+| `--no-mouse` | leave the terminal's mouse alone |
 
-Subcommands: `vibe-check config init` writes the default config and prints its path.
-`--version` reports the release.
+Five tabs: **dashboard**, **processes**, **ports**, **docker**, **disk artifacts**. The footer shows
+what the engines are doing, and every action reports back as a toast.
 
-Nothing leaves your machine. There is no telemetry, no update pings, and no outbound requests — the
-only connections it makes are the HTTP HEAD health probes to sockets already listening on your own
-machine.
-
-## Keys
+## Keyboard
 
 | Key | Action |
 |---|---|
-| `j ↓` / `k ↑` | move cursor |
-| `g` / `G` | jump to top / bottom |
-| `ctrl+d` / `ctrl+u` | half page down / up |
-| `h ←` / `l →` | switch pane |
-| `1`–`5` | jump to tab (dashboard, processes, ports, docker, disk) |
-| `f` or `space` | fullscreen focus the current pane |
-| `/` | fuzzy filter the current list, live |
-| `ctrl+p` | command palette |
+| `j` `k` / `↓` `↑` | move the cursor |
+| `g` `G` | jump to top / bottom |
+| `Ctrl+d` `Ctrl+u` | half page down / up |
+| `h` `l` | switch pane |
+| `1`–`5` | jump to tab |
+| `f` or `Space` | zoom the current pane |
+| `/` | live fuzzy filter on the current list |
+| `Esc` | clear the filter · close an overlay · unzoom |
+| `Ctrl+p` | command palette |
 | `?` or `F1` | keymap drawer |
-| `y` / `Y` | copy row / copy row as JSON (native clipboard) |
+| `y` / `Y` | copy row / copy row as JSON, to the native clipboard |
 | `x` / `X` | act on the row: SIGTERM / SIGKILL a process · purge an artifact (asks first) · stop or start a container |
 | `o` | orphan-only filter |
 | `s` | cycle sort order |
 | `r` | rescan disk artifacts |
 | `t` | cycle theme |
-| `q` / `ctrl+c` | quit — the terminal is always restored |
+| `q` / `Ctrl+c` | quit — the terminal is always restored |
 
-Mouse works too: click tabs, rows and panes, wheel to scroll.
+Mouse works as expected: click tabs, rows and panes; wheel to scroll.
 
-## What it actually does
+## Engines
 
-**Orphan + leak detector.** Dev servers reparented to PID 1 (or whose parent vanished) get flagged
-with the RSS you can reclaim. `x` kills the selected one; the command palette (`ctrl+p`) has
-*kill all orphaned dev servers* for the sweep. Freshly reparented daemons are ignored until they
-pass `orphan_min_age_sec` and `orphan_min_rss_mb`, so the list stays honest rather than noisy.
+Each one is a goroutine loop that publishes an immutable snapshot; the UI never blocks on collection.
 
-**Artifact crawler.** Walks your home directory for `node_modules`, `target`, `.next`, `.venv`,
-`dist`, `build`, … with a concurrent, *low-priority* engine: zero-allocation `getdents64` reads on
-Linux plus a shared duty-cycle limiter pinned to a fraction of one core. It publishes results
-incrementally, so you see sizes while it still walks. Sizes are hardlink-aware and match
-`du --apparent-size` exactly on Linux and macOS (NTFS gives no cheap inode fingerprint, so on Windows
-a file reached through two hardlinks counts twice). Purge runs a concurrent delete engine with
-progress.
+**Orphan and leak detector** — dev servers reparented to PID 1, or whose parent vanished, are flagged
+with the RSS you can reclaim. `x` kills the selected row; `Ctrl+p` → *kill all orphaned dev servers*
+does the sweep. Newly reparented daemons are ignored until they clear `orphan_min_age_sec` and
+`orphan_min_rss_mb`, so the list stays honest instead of noisy.
 
-**Port mapper.** Reads `/proc/net/tcp` / `tcp6` (and the platform equivalent elsewhere), resolves
-each socket inode to its owning process, and probes listeners with a non-blocking synthetic HTTP
-HEAD — including TLS detection — so `3000` shows latency and status instead of just "LISTEN".
+**Artifact crawler** — walks your home directory for `node_modules`, `target`, `.next`, `.venv`,
+`dist`, `build`, `out`, `.turbo`, `.parcel-cache`. On Linux it decodes `getdents64` directly with zero
+per-entry allocation and shares one duty-cycle limiter across its workers, so it is capped at a fraction
+of a core no matter how many directories it opens. Results publish incrementally. Sizes are
+hardlink-aware and byte-exact against `du --apparent-size`. `x` hands a directory to a concurrent purge
+engine that reports progress and emits events.
 
-**Container view.** Talks to the Docker or Podman API over the raw unix socket (named pipe on
-Windows, with Colima and `~/.docker` endpoints discovered) with no SDK dependency, and streams
-per-container stats.
+**Port mapper** — reads the kernel's TCP listener table (on Linux, `/proc/net/tcp` and `tcp6`, with
+socket inodes resolved to owning PIDs through a cached `/proc/*/fd` walk), maps `watch_ports` that are
+not bound as explicitly *not bound*, and probes listeners with a non-blocking synthetic HTTP HEAD —
+TLS sniffing included — so `3000` shows status and latency rather than just `LISTEN`.
 
-**Terminal recovery.** The engine never writes raw escape codes on exit paths that can be skipped.
-On `SIGINT`, `SIGTERM`, `SIGHUP`, or a panic inside the UI, the alternate screen and cursor are
-restored (`\x1b[?1049l\x1b[?25h`) so your shell is left usable.
+**Container view** — talks to Docker or Podman over the raw unix socket (named pipe on Windows, with
+Colima and `~/.docker` endpoints discovered) and streams per-container stats. No SDK, no CLI dependency,
+no daemon-restart cleverness.
 
-**Headless.** `--json` emits one complete snapshot for scripts and CI.
+**FD and I/O pressure** — `/proc/sys/fs/file-nr` against the system limit, plus per-process FD sampling
+that only reads what changed since the last tick.
+
+**Terminal recovery** — the alternate screen, cursor and attributes are restored on clean quit, on
+`SIGINT`, `SIGTERM` and `SIGHUP`, and from a recovered panic inside the UI. A killed `vibe-check` never
+leaves your shell in a broken state.
 
 ## Configuration
 
-`~/.config/vibe-check/config.toml` (XDG-aware). `vibe-check config init` writes this; every key is
-optional:
+`$XDG_CONFIG_HOME/vibe-check/config.toml`, or `~/.config/vibe-check/config.toml`.
+`vibe-check config init` writes it; every key is optional and defaults are applied for anything missing.
 
 ```toml
-theme              = "catppuccin"   # catppuccin | tokyonight | gruvbox
-sys_interval_ms    = 500            # 250-1000
-proc_interval_ms   = 1000
-port_interval_ms   = 2500
-docker_interval_ms = 2000
-artifact_scan_ms   = 300000         # background disk crawl cadence
-fps                = 60
-mouse              = true
-ram_alert_pct      = 85
-orphan_min_age_sec = 120
-orphan_min_rss_mb  = 64
+theme                 = "catppuccin"          # catppuccin | tokyonight | gruvbox
+sys_interval_ms       = 500                   # 250-1000
+proc_interval_ms      = 1000
+port_interval_ms      = 2500
+docker_interval_ms    = 2000
+artifact_scan_ms      = 300000                # background crawl cadence
+fps                   = 60
+mouse                 = true
+ram_alert_pct         = 85
+orphan_min_age_sec    = 120
+orphan_min_rss_mb     = 64
 http_probe_timeout_ms = 750
-scan_roots         = ["/home/you"]
-artifact_kinds     = ["node_modules", "target", ".next", ".venv", "venv", "dist", "build", "out", ".turbo", ".parcel-cache"]
-watch_ports        = [3000, 5173, 8080]
-purge_workers      = 16
-scan_workers       = 6
+scan_roots            = ["/home/you"]
+artifact_kinds        = ["node_modules", "target", ".next", ".venv", "venv",
+                         "dist", "build", "out", ".turbo", ".parcel-cache"]
+watch_ports           = [3000, 5173, 8080]
+purge_workers         = 16
+scan_workers          = 6
 ```
 
-## Rendering and performance
+## Headless output
 
-Two decoupled loops: background collectors write immutable snapshots through atomics, and the UI
-reads them at up to 60 FPS. Redraws are diff-based across a dual buffer, so an idle screen costs
-almost no writes and never flickers. Colour depth is negotiated (truecolor → 256 → 16) and the
-collectors on Linux read `/proc` directly rather than shelling out.
+`--json` writes one snapshot to stdout and nothing else — restore sequences go to the tty, so
+`vibe-check --json | jq` stays clean.
 
-Measured on a laptop-class 8-core Linux desktop (10-second CPU buckets of a live run): a 27% burst
-of one core during the first ten seconds while the initial crawl runs — higher on a cold page cache —
-then 2.8–4.2% at steady idle. `--json` runs the scan at full speed and returns a complete snapshot in
-about 1.6s.
+```
+{
+  "at":          timestamp,
+  "sys":         hostname, os, kernel, uptime_ns, num_cpu, cpu_model, cpu_percent,
+                 core_percents[], load_1/5/15, mem_used/total/avail/percent,
+                 swap_used/total, disk_read_bps, disk_write_bps, net_recv_bps,
+                 net_sent_bps, proc_total, fd_alloc, fd_count, fd_max, fd_per_proc,
+                 orphan_count, orphan_rss
+  "procs":       pid, ppid, uid, user, name, cmdline, state, rss, cpu_percent,
+                 age_sec, threads, orphan
+  "ports":       proto, addr, port, state, pid, proc_name, monitored, http{...}
+  "containers":  docker/podman view, empty when no runtime socket exists
+  "artifacts":   path, project, size, files, kind
+  "docker_err":  why the container engine has nothing, when it is empty
+  "scan_state":  scanning, dirs_seen, last_done_at
+}
+```
+
+```sh
+vibe-check --json | jq '[.procs[] | select(.orphan)] | map(.rss) | add'   # reclaimable bytes
+```
+
+## Accuracy
+
+The claim is boring and deliberate: a number is shown only when the kernel or API supplied it.
+
+- Artifact bytes and file counts are byte-exact against `du --apparent-size` and `find | wc`, including
+  hardlink deduplication — pinned by tests that build a directory tree with spaces, unicode, empty dirs,
+  symlinks, loops and absolute links.
+- `num_cpu`, `mem_total`, `hostname`, `fd_max`, listener count and `load_1` are cross-checked against
+  `nproc`, `/proc/meminfo`, `/proc/sys/fs/file-nr`, `ss -ltn` and `/proc/loadavg`.
+- Counts that legitimately drift between two samplings (process total, available memory, uptime) are
+  explained by sampling time, not fudged into agreement.
+- When a platform has no source for a metric, the UI renders a dash. It does not substitute an estimate.
+
+## Performance
+
+Two loops, deliberately decoupled: collectors write snapshots through `atomic.Pointer`, the UI reads
+snapshots and redraws on a diff basis across a dual buffer, so an idle screen issues almost no writes
+and cannot flicker. Panes repaint at up to 60 FPS without collecting anything.
+
+Measured on an 8-core Linux laptop, in 10-second CPU buckets of a live run: **27%** of a core during the
+first ten seconds while the initial crawl runs (higher on a cold page cache), then **2.8–4.2%** at steady
+idle. `--json` runs the crawl unthrottled and returns a complete snapshot in about **1.6 s**.
 
 ## Platforms
 
 | OS | Notes |
 |---|---|
-| Linux | Full feature set, `/proc` fast path (per-process CPU, FD counts, socket-inode ownership, file-nr limits) |
-| macOS | Kernel collectors via gopsutil (no `/proc`): per-process CPU, memory, listeners with PID ownership, orphan detection, disk crawl |
-| Windows | Listener enumeration without `netstat`, Docker over the named pipe, kills through the process API (no POSIX signals); hardlinked files count once per name |
+| Linux | Full feature set and the `/proc` fast path: per-process CPU, FD counts, socket-inode ownership, `file-nr` limits, zero-allocation directory reads |
+| macOS | Kernel collectors through gopsutil — per-process CPU, memory, listeners with PID ownership, orphan detection, disk crawl |
+| Windows | Listener enumeration without `netstat`, Docker over the named pipe, kills through the process API (no POSIX signals); hardlinked files count once per name, because NTFS gives no cheap inode fingerprint |
 
-This is not theoretical: CI runs the headless snapshot on Linux, macOS and Windows runners and
-fails the build unless hostname, kernel, CPU model, memory, process count and the disk crawl all come
-back with plausible values. Where a metric has no portable source it is reported as unavailable
-instead of being faked.
+CI proves this rather than asserting it. Every platform job builds, vets, runs the suite, then executes
+the headless snapshot **on that OS** and fails unless hostname, kernel, CPU model, memory, process count
+and the disk crawl come back with plausible values (`scripts/verify-snapshot.awk`). The run on `main`
+reported an `Apple M1` with 564 processes on macOS, an `AMD EPYC 9V74` with 152 on Windows, and an
+`Intel Xeon` with 187 on Linux — collected, not asserted.
 
 ## Development
 
 ```sh
-go test ./...                  # engine parity + UI tests
-./scripts/build-release.sh     # cross-compile every asset into dist/
+make lint        # gofmt + go vet
+make test        # suite (engine parity + UI)
+make race        # suite under -race
+make build       # ./vibe-check
+make release     # dist/ assets for every platform + checksums.txt
 ```
 
-## License
+Layout: `cmd/` is the cobra entry point and terminal-safety net, `internal/engine` holds the collectors
+(one file per platform split where the kernel differs), `internal/ui` the Bubbletea model and views,
+`internal/theme` the palettes, `internal/config` the TOML surface. Platform-specific code is chosen by
+build tags, never by runtime OS sniffing.
 
-MIT — see [LICENSE](LICENSE).
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Short version: `make lint test race` before you push, add a
+test when a bug was caused by a number being wrong, and keep the honesty rule — an unavailable metric
+beats an invented one. Bugs and feature requests use the issue templates; please read
+[SECURITY.md](SECURITY.md) before filing anything that involves the purge or kill paths.
+
+Release history lives in [CHANGELOG.md](CHANGELOG.md).
+
+## Security
+
+`vibe-check` runs as you and can therefore do what you can do: signal processes and delete directories.
+
+- No outbound network traffic. The only connections are HTTP HEAD probes to sockets already listening on
+  your machine. No update checks, no analytics, no crash reporting.
+- Purge asks for confirmation, and only ever targets a directory that the crawler itself listed.
+- Container control is limited to start/stop over the local runtime socket.
+- Config and clipboard interaction stay local; `y` copies row data to your clipboard, which is worth
+  knowing if a command line contains a secret.
+
+Report vulnerabilities privately — see [SECURITY.md](SECURITY.md).
+
+## About
+
+**Vibecoded.** This project was built pair-programming with an AI agent (Qoder) across the whole
+codebase — engine, UI, packaging and CI — with humans making the calls on architecture, naming and
+"no, that number has to be real". The commit messages and comments reflect that: plenty of them record
+a measurement that contradicted an assumption, which is the only kind of debugging that worked.
+
+MIT licensed, see [LICENSE](LICENSE).
