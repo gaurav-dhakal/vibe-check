@@ -22,6 +22,15 @@ type sysCounters struct {
 	haveCounters bool
 }
 
+// trimModel keeps a CPU signature short enough for the dashboard header.
+func trimModel(name string) string {
+	name = strings.TrimSpace(name)
+	if len(name) > 42 {
+		return name[:42] + "…"
+	}
+	return name
+}
+
 func clampPct(v float64) float64 {
 	if v < 0 {
 		return 0

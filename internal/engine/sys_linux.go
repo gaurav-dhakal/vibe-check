@@ -36,11 +36,7 @@ func cpuModelName() string {
 		if !ok {
 			continue
 		}
-		name = strings.TrimSpace(strings.TrimLeft(name, " :\t"))
-		if len(name) > 42 {
-			name = name[:42] + "…"
-		}
-		return name
+		return trimModel(strings.TrimLeft(name, " :\t"))
 	}
 	return ""
 }

@@ -176,9 +176,12 @@ about 1.6s.
 | Linux | Full feature set, `/proc` fast path (per-process CPU, FD counts, socket-inode ownership, file-nr limits) |
 | macOS | gopsutil collectors; orphan detection and port list included |
 | Windows | gopsutil + `netstat`-free listener enumeration, named-pipe Docker, no POSIX signals (kills use the process API) |
-| FreeBSD | Builds and runs; per-process FD limits degrade gracefully |
+| FreeBSD | Builds and runs; hw.model for the CPU string, no `/proc`-style FD totals |
 
-Where a metric has no portable source it is reported as unavailable instead of being faked.
+This is not theoretical: CI runs the headless snapshot on Linux, macOS and Windows runners and
+inside a FreeBSD 14 VM, and fails the build unless hostname, kernel, CPU model, memory, process
+count and the disk crawl all come back with plausible values. Where a metric has no portable source
+it is reported as unavailable instead of being faked.
 
 ## Development
 
