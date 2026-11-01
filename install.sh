@@ -29,8 +29,11 @@ esac
 
 api="https://api.github.com/repos/$REPO"
 if [ "$WANT_VERSION" = "latest" ]; then
-  tag=$(curl -fsSL "$api/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
-  [ -n "$tag" ] || die "no published release found for $REPO (or the GitHub API rate limit bit).
+  # `|| true` everywhere: a 404 here is an expected state (no release yet), and
+  # pipefail would otherwise abort before the message below.
+  latest=$(curl -fsSL "$api/releases/latest" 2>/dev/null || true)
+  tag=$(printf '%s\n' "$latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | sed -n 1p) || true
+  [ -n "${tag:-}" ] || die "no published release found for $REPO (or the GitHub API rate limit bit).
   With Go installed you can build from source:  go install github.com/$REPO@latest"
 else
   tag="$WANT_VERSION"
@@ -55,7 +58,7 @@ sha() {
   else printf ''; fi
 }
 want=$(curl -fsSL "https://github.com/$REPO/releases/download/$tag/checksums.txt" 2>/dev/null \
-       | awk -v a="$asset" '$2 == a {print $1}')
+       | awk -v a="$asset" '$2 == a {print $1}' || true)
 if [ -n "$want" ]; then
   got=$(sha "$tmp/$asset")
   [ "$got" = "$want" ] || die "checksum mismatch for $asset — refusing to install (want $want, got ${got:-no sha256 tool})"
