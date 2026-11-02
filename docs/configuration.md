@@ -3,10 +3,12 @@
 ## Config file
 
 `$XDG_CONFIG_HOME/vibe-check/config.toml`, or `~/.config/vibe-check/config.toml`.
-`vibe-check config init` writes it; every key is optional and defaults are applied for anything missing.
+The first launch asks for a theme and writes the file; `vibe-check config init` writes the stock
+defaults without asking, and `--default` does the same on the first run. Every key is optional and
+defaults are applied for anything missing.
 
 ```toml
-theme                 = "catppuccin"          # catppuccin | tokyonight | gruvbox
+theme                 = "catppuccin"   # catppuccin · tokyonight · gruvbox · nord · dracula · solarized
 sys_interval_ms       = 500                   # 250-1000
 proc_interval_ms      = 1000
 port_interval_ms      = 2500
@@ -31,10 +33,12 @@ scan_workers          = 6
 | Flag | Meaning |
 |---|---|
 | `--config <path>` | use a specific config file |
-| `--theme <name>` | override the configured theme |
+| `--theme <name>` | override the configured theme for this run |
+| `--default` | take the stock settings and record them, so nothing is asked on first run |
 | `--interval <ms>` | telemetry cadence, clamped to 250–1000 |
 | `--json` | print one snapshot and exit; the disk scan runs unthrottled |
 | `--no-mouse` | leave the terminal's mouse alone |
+| `--uninstall` | same as the `uninstall` subcommand |
 
 ## Subcommands
 
@@ -43,3 +47,4 @@ scan_workers          = 6
 | `vibe-check` | the TUI |
 | `vcheck --json` | one snapshot as JSON, no TUI, pipe-friendly |
 | `vcheck config init` | write the config file and print its path |
+| `vcheck uninstall` | remove the binaries and config dir; `--yes` for scripts |

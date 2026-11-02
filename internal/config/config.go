@@ -3,12 +3,13 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
 
 type Config struct {
-	Theme              string   `toml:"theme"`           // catppuccin | tokyonight | gruvbox
+	Theme              string   `toml:"theme"`           // see theme.Names()
 	SysIntervalMS      int      `toml:"sys_interval_ms"` // telemetry cadence 250-1000
 	ProcIntervalMS     int      `toml:"proc_interval_ms"`
 	PortIntervalMS     int      `toml:"port_interval_ms"`
@@ -25,6 +26,9 @@ type Config struct {
 	WatchPorts         []int    `toml:"watch_ports"`    // extra ports always probed
 	PurgeWorkers       int      `toml:"purge_workers"`  // concurrency of delete engine
 	ScanWorkers        int      `toml:"scan_workers"`
+	// Path is where this config was read from; it is never written to disk,
+	// so a theme chosen in the app lands back in the same file.
+	Path string `toml:"-"`
 }
 
 func Default() Config {
@@ -72,6 +76,7 @@ func Load(explicit string) (Config, error) {
 	if p == "" {
 		p = Path()
 	}
+	cfg.Path = p
 	data, err := os.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -115,20 +120,64 @@ func clamp(v, lo, hi int) int {
 
 // Init writes the default config to disk if none exists. Returns the path.
 func Init() (string, error) {
+	return InitWithTheme("")
+}
+
+// InitWithTheme writes the default config with one key changed, if none exists.
+func InitWithTheme(theme string) (string, error) {
 	p := Path()
 	if _, err := os.Stat(p); err == nil {
 		return p, nil
 	}
+	cfg := Default()
+	if theme != "" {
+		cfg.Theme = theme
+	}
+	return p, writeAt(p, cfg)
+}
+
+// SaveTheme rewrites only the theme key, leaving every other line and comment
+// exactly as the user left them. A missing file is created with the defaults.
+func SaveTheme(p, name string) error {
+	if p == "" {
+		p = Path()
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		if os.IsNotExist(err) {
+			cfg := Default()
+			cfg.Theme = name
+			return writeAt(p, cfg)
+		}
+		return err
+	}
+	key := `theme = "` + name + `"`
+	lines := strings.Split(string(data), "\n")
+	for i, ln := range lines {
+		if isThemeKey(ln) {
+			lines[i] = key
+			return os.WriteFile(p, []byte(strings.Join(lines, "\n")), 0o644)
+		}
+	}
+	return os.WriteFile(p, []byte(key+"\n"+string(data)), 0o644)
+}
+
+func writeAt(p string, cfg Config) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		return p, err
+		return err
 	}
 	f, err := os.Create(p)
 	if err != nil {
-		return p, err
+		return err
 	}
 	defer f.Close()
-	if err := toml.NewEncoder(f).Encode(Default()); err != nil {
-		return p, err
+	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
+		return err
 	}
-	return p, f.Sync()
+	return f.Sync()
+}
+
+func isThemeKey(line string) bool {
+	k, _, ok := strings.Cut(strings.TrimSpace(line), "=")
+	return ok && strings.TrimSpace(k) == "theme"
 }

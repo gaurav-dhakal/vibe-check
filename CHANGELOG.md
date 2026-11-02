@@ -8,9 +8,21 @@ Release binaries for every version are in [GitHub Releases](https://github.com/g
 
 ## [Unreleased]
 
-Docs and tooling only — no collector or UI behaviour changed, so 0.1.3 remains the current binary.
-
 ### Added
+- **GPU stats.** A new collector reads `nvidia-smi` on any OS, or AMD's sysfs surface
+  (`gpu_busy_percent`, `mem_info_vram_*`, hwmon temperature) on Linux, and the dashboard swaps the
+  runtime pane for a GPU pane when a source exists. Cards with no readable utilisation counter —
+  Intel iGPUs — keep the runtime pane instead of showing a guess. `--json` gains a `gpus` array.
+- **First-run theme picker.** A fresh install now asks which theme you want instead of silently
+  starting on catppuccin, and writes the answer to your config. `--default` takes the stock settings
+  without asking; `--theme` and `--json` skip the question too.
+- **Three more themes** — `nord`, `dracula` and `solarized` — alongside the existing three; the menu
+  shows each palette's full name.
+- **`vibe-check uninstall`** (also `vcheck --uninstall`) removes the `vibe-check` and `vcheck`
+  binaries and the config directory, asking first unless `--yes` is given. When Homebrew or winget
+  owns the install it prints the package-manager command instead of deleting files behind its back.
+- `t` inside the app now persists the theme: it rewrites only the `theme` key, leaving the rest of
+  the file (and its comments) untouched.
 - `CONTRIBUTING.md` (ground rules, make targets, layout map, recipes for a new metric or platform),
   `SECURITY.md` (capability and blast-radius table, private reporting route, supported versions) and
   this changelog.
@@ -31,6 +43,8 @@ Docs and tooling only — no collector or UI behaviour changed, so 0.1.3 remains
   per-editor preference.
 
 ### Changed
+- README install section gives every method its own labelled code box (curl, Homebrew, PowerShell,
+  winget, Termux) plus an uninstall section, and `demo.gif` re-records the first-run theme choice.
 - `.gitignore` no longer leaves CI's `snapshot.json` artifact in the working tree.
 
 ## [0.1.3] — 2026-11-01

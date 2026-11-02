@@ -9,7 +9,7 @@ disk your abandoned dev servers left behind.**
 [![License MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platforms](https://img.shields.io/badge/platforms-linux%20%C2%B7%20macOS%20%C2%B7%20windows%20%C2%B7%20termux-blue)](#platforms)
 
-![vibe-check's dashboard, processes, ports and disk tabs: CPU, memory, orphaned dev servers, port-to-process mapping with HTTP health, and node_modules sizes in one terminal pane](demo.gif)
+![vibe-check picks a theme on first run, then shows CPU, memory, I/O, orphaned dev servers, port-to-process mapping with HTTP health, and node_modules sizes in one terminal pane](demo.gif)
 
 You keep asking the same four questions about your own machine: *what is eating CPU, what is holding
 this port, what did I forget to kill, and where did my disk go.* `htop` answers one of them, `lsof`
@@ -19,21 +19,34 @@ build junk, stops the container.
 
 ## Install (30 seconds)
 
-**macOS · Linux**
+Pick one — they all land the same static binary.
+
+**macOS · Linux (Recommended)**
 
 ```sh
-brew tap gaurav-dhakal/vibe-check && brew install vibe-check   # or without Homebrew:
 curl -fsSL https://raw.githubusercontent.com/gaurav-dhakal/vibe-check/main/install.sh | bash
 ```
 
-**Windows (PowerShell)**
+**Homebrew (macOS · Linux)**
+
+```sh
+brew tap gaurav-dhakal/vibe-check
+brew install vibe-check
+```
+
+**Windows (Recommended — PowerShell)**
 
 ```powershell
-winget install gaurav-dhakal.vibe-check                        # or without winget:
 irm https://raw.githubusercontent.com/gaurav-dhakal/vibe-check/main/install.ps1 | iex
 ```
 
-**Termux**
+**WinGet (Windows)**
+
+```powershell
+winget install gaurav-dhakal.vibe-check
+```
+
+**Termux (Android)**
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/gaurav-dhakal/vibe-check/main/install.sh | bash
@@ -46,9 +59,44 @@ vibe-check          # the TUI
 vcheck --json       # one snapshot, pipe-friendly
 ```
 
+The **first launch only** asks for a theme instead of guessing — answer once and it never asks again:
+
+```
+  ● vibe-check — first run
+  pick a theme:
+    1) catppuccin   Catppuccin Mocha   (default)
+    2) tokyonight   Tokyo Night
+    3) gruvbox      Gruvbox Dark
+    4) nord         Nord Snow Storm
+    5) dracula      Dracula
+    6) solarized    Solarized Dark
+```
+
+Type a number, or just press enter. Prefer to skip the interview?
+
+```sh
+vibe-check --default          # install with the stock settings, nothing asked
+vibe-check --theme dracula    # or name it up front
+```
+
+The answer is written to `~/.config/vibe-check/config.toml`, so later launches just open the dashboard.
+To restyle while it is running, press `t` — it cycles all six themes live and saves the one you land
+on, rewriting only the `theme` line so your other settings and comments stay put.
+
+### Uninstall
+
+```sh
+vibe-check uninstall          # or: vcheck --uninstall
+```
+
+Removes the `vibe-check` and `vcheck` binaries next to the running one, plus the config directory,
+after asking first (`--yes` for scripts). If Homebrew or winget owns the install, it says so and
+hands you the right `brew uninstall` / `winget uninstall` instead of deleting files behind their back.
+
 No Go required, no admin rights, no telemetry, no self-updater. Every installer verifies downloads
 against the release's `checksums.txt`. The `winget` package goes live as soon as Microsoft's
 validation merges it; `go install github.com/gaurav-dhakal/vibe-check@latest` works meanwhile.
+More options and troubleshooting: [docs/configuration.md](docs/configuration.md).
 
 ## Why not just htop?
 
@@ -71,6 +119,7 @@ htop shows processes. vibe-check shows your machine.
 | **Port mapper** | kernel TCP table → owning PID → synthetic HTTP HEAD probe, so `3000` shows `200 · 3.6ms`, not just `LISTEN` |
 | **Artifact crawler** | byte-exact sizes for `node_modules`, `target`, `.next`, `.venv`… capped at a fraction of a core |
 | **Container view** | Docker/Podman over the raw socket — no SDK, no CLI dependency |
+| **GPU pane** | utilisation, VRAM and temperature from `nvidia-smi` or sysfs — the runtime pane stays when the machine has no readable GPU |
 | **Kill & purge** | `x` acts on the selected row; purge asks first and only ever touches what the crawler listed |
 | **Headless mode** | `--json` for CI, cron and `jq` |
 
@@ -83,6 +132,7 @@ flowchart LR
         O[ports · TCP tables]
         D[containers · socket API]
         C[crawler · getdents64]
+        G[gpu · nvidia-smi · sysfs]
     end
     E -- immutable snapshot --> S[atomic.Pointer store]
     S -- diff read --> U[Bubbletea UI · 60 FPS]
@@ -108,7 +158,7 @@ vcheck --json | jq -r '.artifacts[] | select(.kind == "node_modules")
 
 ```toml
 # ~/.config/vibe-check/config.toml — the keys people actually set
-theme         = "tokyonight"          # catppuccin | tokyonight | gruvbox
+theme         = "tokyonight"   # catppuccin · tokyonight · gruvbox · nord · dracula · solarized
 watch_ports   = [3000, 5173, 8080]
 ram_alert_pct = 90
 ```
@@ -141,6 +191,7 @@ CI builds, tests **and runs** the headless snapshot on every OS — collected, n
 **Can purge delete the wrong thing?** It confirms first and only ever targets directories the crawler itself listed.
 **Why not btop + a few scripts?** btop is a better process viewer. Nothing else gives you port→process→HTTP health and one-key artifact purge in the same pane.
 **Does it work on Termux?** Yes — the dashboard and disk crawl run out of the box; Android hides other processes' `/proc` from unprivileged apps, so ports and orphans need root.
+**Where are my GPU stats?** NVIDIA (via `nvidia-smi`) and AMD (via sysfs) swap the runtime pane for a GPU pane. Intel iGPUs expose no cheap utilisation counter, so the runtime pane stays — a dash beats an estimate.
 **Is it maintained?** Actively: CI on every push, tagged releases, issue templates answered.
 
 ## Security & privacy

@@ -39,6 +39,9 @@ func (m *model) dashPane(i, w, h int, active bool) string {
 	case 2:
 		return m.paneIO(w, h, active)
 	case 3:
+		if len(m.snap.GPUs) > 0 {
+			return m.paneGPU(w, h, active)
+		}
 		return m.paneRuntime(w, h, active)
 	}
 	return m.paneCPU(w, h, active)
@@ -236,4 +239,39 @@ func (m *model) paneRuntime(w, h int, active bool) string {
 		badge = s.Acc2.Render(" f unzoom ")
 	}
 	return s.pane("runtime", badge, w, h, active, b.String())
+}
+
+func (m *model) paneGPU(w, h int, active bool) string {
+	s := m.st
+	iw := max(w-4, 12)
+
+	var b strings.Builder
+	for i, g := range m.snap.GPUs {
+		if i >= 2 {
+			b.WriteString(s.Faint.Render(fmt.Sprintf("+%d more…", len(m.snap.GPUs)-i)) + "\n")
+			break
+		}
+		if i > 0 {
+			b.WriteString(s.Faint.Render(strings.Repeat("·", min(iw, 16))) + "\n")
+		}
+		pct := fmt.Sprintf("%5.1f%%", g.UtilPercent)
+		b.WriteString(m.pctStyle(g.UtilPercent).Render(pct) + "  " +
+			gaugeBar(g.UtilPercent, min(iw-lipgloss.Width(pct)-3, 30), s) + "\n")
+		b.WriteString(s.Faint.Render(truncate(g.Name, iw)) + "\n")
+		if g.MemTotal > 0 {
+			mp := float64(g.MemUsed) / float64(g.MemTotal) * 100
+			b.WriteString(s.Muted.Render(fmt.Sprintf("vram %s / %s",
+				engine.Bytes(g.MemUsed), engine.Bytes(g.MemTotal))) + "\n")
+			b.WriteString(gaugeBar(mp, min(iw-4, 24), s) + "\n")
+		}
+		if g.HasTemp {
+			b.WriteString(s.Muted.Render(fmt.Sprintf("temp %.0f°C", g.TempC)) + "\n")
+		}
+	}
+
+	badge := ""
+	if active && m.zoomed {
+		badge = s.Acc2.Render(" f unzoom ")
+	}
+	return s.pane("gpu", badge, w, h, active, b.String())
 }

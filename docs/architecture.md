@@ -42,6 +42,11 @@ TLS sniffing included — so `3000` shows status and latency rather than just `L
 Colima and `~/.docker` endpoints discovered) and streams per-container stats. No SDK, no CLI dependency,
 no daemon-restart cleverness.
 
+**GPU collector** — `nvidia-smi --query-gpu=…` when the NVIDIA driver is installed on any OS, otherwise
+the AMD sysfs surface (`/sys/class/drm/card*/device/gpu_busy_percent`, `mem_info_vram_*`, and a hwmon
+temperature). A card with no utilisation file is skipped rather than guessed at, so Intel iGPUs leave
+the runtime pane in place; the dashboard swaps that pane for GPU stats only when a source exists.
+
 **FD and I/O pressure** — `/proc/sys/fs/file-nr` against the system limit, plus per-process FD sampling
 that only reads what changed since the last tick.
 

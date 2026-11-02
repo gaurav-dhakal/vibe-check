@@ -20,6 +20,7 @@ type Engine struct {
 	procs      atomic.Pointer[[]Proc]
 	ports      atomic.Pointer[[]Port]
 	containers atomic.Pointer[[]Container]
+	gpus       atomic.Pointer[[]GPU]
 	dockerErr  atomic.Pointer[string]
 	artifacts  atomic.Pointer[[]Artifact]
 	scan       atomic.Pointer[ScanState]
@@ -97,10 +98,12 @@ func New(cfg config.Config) *Engine {
 	emptyP := []Proc{}
 	emptyPort := []Port{}
 	emptyC := []Container{}
+	emptyG := []GPU{}
 	emptyA := []Artifact{}
 	e.procs.Store(&emptyP)
 	e.ports.Store(&emptyPort)
 	e.containers.Store(&emptyC)
+	e.gpus.Store(&emptyG)
 	e.artifacts.Store(&emptyA)
 	e.dockerErr.Store(new(string))
 	e.scan.Store(&ScanState{})
@@ -122,6 +125,13 @@ func (e *Engine) Run(ctx context.Context) {
 	go e.loop(ctx, "proc", ms(e.cfg.ProcIntervalMS), e.updateProcs)
 	go e.loop(ctx, "ports", ms(e.cfg.PortIntervalMS), e.updatePorts)
 	go e.loop(ctx, "docker", ms(e.cfg.DockerIntervalMS), e.updateDocker)
+	// nvidia-smi spawns a process, so GPU sampling keeps a 3s floor even when
+	// the docker loop is configured faster; sysfs reads are cheap either way.
+	gpuMS := e.cfg.DockerIntervalMS
+	if gpuMS < 3000 {
+		gpuMS = 3000
+	}
+	go e.loop(ctx, "gpu", ms(gpuMS), e.updateGPUs)
 	go e.artifactLoop(ctx)
 }
 
@@ -161,6 +171,7 @@ func (e *Engine) Snapshot() Snapshot {
 		Procs:      *e.procs.Load(),
 		Ports:      *e.ports.Load(),
 		Containers: *e.containers.Load(),
+		GPUs:       *e.gpus.Load(),
 		Artifacts:  *e.artifacts.Load(),
 		DockerErr:  *e.dockerErr.Load(),
 		ScanState:  *e.scan.Load(),

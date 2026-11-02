@@ -84,9 +84,37 @@ var palettes = map[string]Palette{
 		Accent: "#fe8019", Accent2: "#d38696", Good: "#b8bb26",
 		Warn: "#fabd2f", Bad: "#fb4934", Info: "#8ec07c",
 	},
+	"nord": {
+		Name: "Nord Snow Storm", Bg: "#2e3440", Panel: "#272c36",
+		Text: "#e5e9f0", Muted: "#a5b1c2", Faint: "#4c566a", Border: "#3b4251",
+		Accent: "#88c0d0", Accent2: "#b48ead", Good: "#a3be8c",
+		Warn: "#ebcb8b", Bad: "#bf616a", Info: "#81a1c1",
+	},
+	"dracula": {
+		Name: "Dracula", Bg: "#282a36", Panel: "#21222c",
+		Text: "#f8f8f2", Muted: "#cfd0e0", Faint: "#6272a4", Border: "#44475a",
+		Accent: "#bd93f9", Accent2: "#ff79c6", Good: "#50fa7b",
+		Warn: "#f1fa8c", Bad: "#ff5555", Info: "#8be9fd",
+	},
+	"solarized": {
+		Name: "Solarized Dark", Bg: "#002b36", Panel: "#073642",
+		Text: "#93a1a1", Muted: "#839496", Faint: "#586e75", Border: "#0e4150",
+		Accent: "#268bd2", Accent2: "#d33682", Good: "#859900",
+		Warn: "#b58900", Bad: "#dc322f", Info: "#2aa198",
+	},
 }
 
-func Names() []string { return []string{"catppuccin", "tokyonight", "gruvbox"} }
+func Names() []string {
+	return []string{"catppuccin", "tokyonight", "gruvbox", "nord", "dracula", "solarized"}
+}
+
+// DisplayName is the human label shown in the first-run menu and overlays.
+func DisplayName(name string) string {
+	if p, ok := palettes[name]; ok {
+		return p.Name
+	}
+	return name
+}
 
 func Exists(name string) bool { _, ok := palettes[name]; return ok }
 

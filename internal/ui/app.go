@@ -361,7 +361,11 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.key = next
 		m.th = theme.New(next, m.th.Depth)
 		m.st = NewStyles(m.th)
-		m.setToast("theme → "+m.th.Name, "info")
+		level, msg := "info", "theme → "+m.th.Name+" · saved"
+		if err := config.SaveTheme(m.cfg.Path, next); err != nil {
+			level, msg = "warn", "theme → "+m.th.Name+" · not saved, this run only"
+		}
+		m.setToast(msg, level)
 		return m, nil
 
 	case "y":

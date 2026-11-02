@@ -2,7 +2,7 @@ GO      ?= go
 PREFIX  ?= $(HOME)/.local
 BIN     ?= $(PREFIX)/bin
 TAG     := $(shell git describe --tags --exact-match 2>/dev/null | sed 's/^v//')
-VERSION := $(if $(TAG),$(TAG),$(shell sed -n 's/.*version   = "\(.*\)".*/\1/p' cmd/root.go | head -1))
+VERSION := $(if $(TAG),$(TAG),$(shell sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' cmd/root.go | head -1))
 
 .PHONY: all fmt vet lint test race build install release clean
 
@@ -23,6 +23,7 @@ race:
 	$(GO) test ./... -count=1 -race
 
 build:
+	@test -n "$(VERSION)" || { echo "VERSION is empty — cannot read it from cmd/root.go" >&2; exit 1; }
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-s -w -X github.com/gaurav-dhakal/vibe-check/cmd.version=$(VERSION)" -o vibe-check .
 
 install: build
@@ -31,6 +32,7 @@ install: build
 	ln -sf vibe-check $(BIN)/vcheck
 
 release:
+	@test -n "$(VERSION)" || { echo "VERSION is empty — cannot read it from cmd/root.go" >&2; exit 1; }
 	VERSION=$(VERSION) ./scripts/build-release.sh
 
 clean:

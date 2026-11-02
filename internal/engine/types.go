@@ -11,6 +11,7 @@ type Snapshot struct {
 	Procs      []Proc      `json:"procs"`
 	Ports      []Port      `json:"ports"`
 	Containers []Container `json:"containers"`
+	GPUs       []GPU       `json:"gpus,omitempty"`
 	Artifacts  []Artifact  `json:"artifacts"`
 	DockerErr  string      `json:"docker_err,omitempty"`
 	ScanState  ScanState   `json:"scan_state"`
@@ -106,6 +107,16 @@ type Artifact struct {
 	Size    uint64 `json:"size"`
 	Files   int    `json:"files"`
 	Project string `json:"project"`
+}
+
+type GPU struct {
+	Vendor      string  `json:"vendor"` // nvidia | amdgpu | i915
+	Name        string  `json:"name"`
+	UtilPercent float64 `json:"util_percent"`
+	MemUsed     uint64  `json:"mem_used"`
+	MemTotal    uint64  `json:"mem_total"`
+	TempC       float64 `json:"temp_c"`
+	HasTemp     bool    `json:"has_temp"`
 }
 
 type ScanState struct {

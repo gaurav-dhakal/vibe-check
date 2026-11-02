@@ -1,15 +1,20 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	xterm "github.com/charmbracelet/x/term"
 	"github.com/gaurav-dhakal/vibe-check/internal/config"
 	"github.com/gaurav-dhakal/vibe-check/internal/engine"
 	"github.com/gaurav-dhakal/vibe-check/internal/theme"
@@ -18,12 +23,14 @@ import (
 )
 
 var (
-	cfgPath   string
-	themeFlag string
-	interval  int
-	jsonOut   bool
-	noMouse   bool
-	version   = "0.1.3"
+	cfgPath       string
+	themeFlag     string
+	interval      int
+	jsonOut       bool
+	noMouse       bool
+	useDefaults   bool
+	uninstallFlag bool
+	version       = "0.1.3"
 )
 
 var rootCmd = &cobra.Command{
@@ -56,10 +63,16 @@ var configInitCmd = &cobra.Command{
 
 func init() {
 	rootCmd.Flags().StringVar(&cfgPath, "config", "", "path to config.toml")
-	rootCmd.Flags().StringVar(&themeFlag, "theme", "", "catppuccin | tokyonight | gruvbox")
+	rootCmd.Flags().StringVar(&themeFlag, "theme", "",
+		"one of: "+strings.Join(theme.Names(), " | "))
 	rootCmd.Flags().IntVar(&interval, "interval", 0, "sys telemetry interval in ms (250-1000)")
 	rootCmd.Flags().BoolVar(&jsonOut, "json", false, "print one snapshot as JSON and exit (no TUI, pipe-friendly)")
 	rootCmd.Flags().BoolVar(&noMouse, "no-mouse", false, "disable terminal mouse tracking")
+	rootCmd.Flags().BoolVar(&useDefaults, "default", false, "skip the first-run theme prompt and keep the defaults")
+	rootCmd.Flags().BoolVar(&uninstallFlag, "uninstall", false, "remove the binary and config (same as: vibe-check uninstall)")
+	// Bound to the same variable as `vibe-check uninstall --yes`, so either
+	// spelling can run unattended.
+	rootCmd.Flags().BoolVar(&uninstallYes, "yes", false, "with --uninstall: skip the confirmation")
 	configCmd.AddCommand(configInitCmd)
 	rootCmd.AddCommand(configCmd)
 }
@@ -98,6 +111,11 @@ func run(cmd *cobra.Command, args []string) (err error) {
 		}
 	}()
 
+	// `vibe-check --uninstall` is the same door as `vibe-check uninstall`.
+	if uninstallFlag {
+		return uninstall(cmd, args)
+	}
+
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return fmt.Errorf("config %s: %v", cfgPath, err)
@@ -111,6 +129,22 @@ func run(cmd *cobra.Command, args []string) (err error) {
 			return fmt.Errorf("unknown theme %q (try %v)", themeFlag, theme.Names())
 		}
 		cfg.Theme = themeFlag
+	}
+
+	// First run on a real terminal: ask for a theme instead of silently
+	// starting with catppuccin. --json and --theme skip the question;
+	// --default takes the defaults and records them so nothing is asked twice.
+	switch {
+	case jsonOut || themeFlag != "":
+	case useDefaults:
+		config.Init() // remember the defaults, so the next launch stays quiet
+	case configMissing(cfgPath) && stdinIsTTY():
+		if picked := promptTheme(os.Stdout, os.Stdin); picked != "" {
+			cfg.Theme = picked
+			if p, err := config.InitWithTheme(picked); err == nil {
+				fmt.Println("config written to", p)
+			}
+		}
 	}
 
 	th := theme.Default(cfg.Theme)
@@ -201,4 +235,57 @@ func clampInt(v, lo, hi int) int {
 		return hi
 	}
 	return v
+}
+
+func configMissing(explicit string) bool {
+	p := explicit
+	if p == "" {
+		p = config.Path()
+	}
+	_, err := os.Stat(p)
+	return err != nil
+}
+
+// stdinIsTTY guards every prompt: /dev/null and pipes are character devices
+// too, so the stat check alone would ask questions nobody can answer.
+func stdinIsTTY() bool {
+	return xterm.IsTerminal(uintptr(os.Stdin.Fd()))
+}
+
+func promptTheme(w io.Writer, in io.Reader) string {
+	names := theme.Names()
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  \x1b[1;35m● vibe-check\x1b[0m — first run")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  pick a theme:")
+	for i, n := range names {
+		suffix := ""
+		if i == 0 {
+			suffix = "  \x1b[2m(default)\x1b[0m"
+		}
+		fmt.Fprintf(w, "    \x1b[1m%d\x1b[0m) %-11s \x1b[2m%s\x1b[0m%s\n",
+			i+1, n, theme.DisplayName(n), suffix)
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  \x1b[2mpress t inside the app to cycle themes; this choice is saved to your config\x1b[0m")
+	fmt.Fprint(w, "\n  number + enter, or just enter for the default: ")
+
+	// A closed stdin means nobody is there to answer; leave the config alone.
+	sc := bufio.NewScanner(in)
+	if !sc.Scan() {
+		fmt.Fprintln(w)
+		return ""
+	}
+	choice := strings.TrimSpace(sc.Text())
+	if choice == "" {
+		return names[0]
+	}
+	if theme.Exists(choice) {
+		return choice
+	}
+	if idx, err := strconv.Atoi(choice); err == nil && idx >= 1 && idx <= len(names) {
+		return names[idx-1]
+	}
+	fmt.Fprintln(w, "  unknown choice — using", names[0])
+	return names[0]
 }

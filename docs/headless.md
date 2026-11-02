@@ -18,6 +18,8 @@ about 1.6 s.
                  age_sec, threads, orphan
   "ports":       proto, addr, port, state, pid, proc_name, monitored, http{...}
   "containers":  docker/podman view, empty when no runtime socket exists
+  "gpus":        vendor, name, util_percent, mem_used, mem_total, temp_c, has_temp
+                 (omitted when the machine exposes no readable GPU)
   "artifacts":   path, project, size, files, kind
   "docker_err":  why the container engine has nothing, when it is empty
   "scan_state":  scanning, dirs_seen, last_done_at
@@ -36,6 +38,9 @@ vcheck --json | jq '.ports[] | select(.port == 3000)'
 # the ten biggest node_modules directories
 vcheck --json | jq -r '.artifacts[] | select(.kind == "node_modules")
   | "\(.size)\t\(.path)"' | sort -rn | head
+
+# is any GPU pinned while the tests run
+vcheck --json | jq -r '.gpus[]? | "\(.name) \(.util_percent)% \(.mem_used)/\(.mem_total)"'
 
 # fail a CI step when a watch port is not bound
 vcheck --json | jq -e '.ports[] | select(.port == 8080 and .monitored)' >/dev/null

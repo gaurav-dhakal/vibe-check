@@ -17,7 +17,7 @@
 | `o` | orphan-only filter |
 | `s` | cycle sort order |
 | `r` | rescan disk artifacts |
-| `t` | cycle theme |
+| `t` | cycle theme, saved back to config |
 | `q` / `Ctrl+c` | quit — the terminal is always restored |
 
 Mouse works as expected: click tabs, rows and panes; wheel to scroll.
