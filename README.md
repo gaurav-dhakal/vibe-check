@@ -19,11 +19,27 @@ build junk, stops the container.
 
 ## Install (30 seconds)
 
-| Platform | Command |
-|---|---|
-| macOS · Linux | `brew tap gaurav-dhakal/vibe-check && brew install vibe-check` |
-| Windows | `winget install gaurav-dhakal.vibe-check` |
-| Termux · curl | `curl -fsSL https://raw.githubusercontent.com/gaurav-dhakal/vibe-check/main/install.sh \| bash` |
+**macOS · Linux**
+
+```sh
+brew tap gaurav-dhakal/vibe-check && brew install vibe-check   # or without Homebrew:
+curl -fsSL https://raw.githubusercontent.com/gaurav-dhakal/vibe-check/main/install.sh | bash
+```
+
+**Windows (PowerShell)**
+
+```powershell
+winget install gaurav-dhakal.vibe-check                        # or without winget:
+irm https://raw.githubusercontent.com/gaurav-dhakal/vibe-check/main/install.ps1 | iex
+```
+
+**Termux**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/gaurav-dhakal/vibe-check/main/install.sh | bash
+```
+
+Then run it:
 
 ```sh
 vibe-check          # the TUI
