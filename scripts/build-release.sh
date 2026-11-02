@@ -24,9 +24,21 @@ build() {
   [ "$goos" = windows ] && bin="vibe-check.exe"
 
   local stage; stage="$(mktemp -d)"
+  # Android's loader (Termux) refuses ET_EXEC outright, so the Linux builds are
+  # position-independent; macOS and Windows already ship that way.
+  local pie=""
+  [ "$goos" = linux ] && pie="-buildmode=pie"
   CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-    go build -trimpath -ldflags "-s -w -X github.com/gaurav-dhakal/vibe-check/cmd.version=$VERSION" \
+    go build $pie -trimpath -ldflags "-s -w -X github.com/gaurav-dhakal/vibe-check/cmd.version=$VERSION" \
       -o "$stage/$bin" .
+
+  if [ "$goos" = linux ]; then
+    # e_type lives at byte 16 and reads little-endian: 0300 is ET_DYN. Anything
+    # else is ET_EXEC, which Android will not exec, so fail the build, not the
+    # customer's Termux session.
+    etype="$(od -An -tx1 -j16 -N2 "$stage/$bin" | tr -d ' \n')"
+    [ "$etype" = "0300" ] || { echo "linux/$goarch is not PIE (e_type bytes: $etype)" >&2; exit 1; }
+  fi
 
   # Same binary answers to the short name; ship both so installs need no symlink.
   cp "$stage/$bin" "$stage/vcheck$([ "$goos" = windows ] && echo .exe)"

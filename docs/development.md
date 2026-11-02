@@ -22,7 +22,7 @@ build tags, never by runtime OS sniffing.
 | Linux | Full feature set and the `/proc` fast path: per-process CPU, FD counts, socket-inode ownership, `file-nr` limits, zero-allocation directory reads |
 | macOS | Kernel collectors through gopsutil — per-process CPU, memory, listeners with PID ownership, orphan detection, disk crawl |
 | Windows | Listener enumeration without `netstat`, Docker over the named pipe, kills through the process API (no POSIX signals); hardlinked files count once per name, because NTFS gives no cheap inode fingerprint |
-| Termux (Android) | Runs the static `linux/arm64` build. The dashboard, your own process stats and the disk crawl work out of the box; Android hides other processes' `/proc` entries and `/proc/net` from unprivileged apps, so ports, orphans and other-process CPU render as dashes until you run as root (`pkg install tsu && tsu`) |
+| Termux (Android) | Runs the static PIE `linux/arm64` build — Android's loader rejects a non-PIE binary. The dashboard, your own process stats and the disk crawl work out of the box; Android hides other processes' `/proc` entries and `/proc/net` from unprivileged apps, so ports, orphans and other-process CPU render as dashes until you run as root (`pkg install tsu && tsu`) |
 
 ## CI evidence
 

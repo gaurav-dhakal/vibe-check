@@ -47,6 +47,14 @@ Release binaries for every version are in [GitHub Releases](https://github.com/g
   winget, Termux) plus an uninstall section, and `demo.gif` re-records the first-run theme choice.
 - `.gitignore` no longer leaves CI's `snapshot.json` artifact in the working tree.
 
+### Fixed
+- **Termux.** The Linux release binaries are now position-independent (`-buildmode=pie`). Android's
+  loader refuses `ET_EXEC` with `has unexpected e_type: 2`, so every 0.1.4 install on Termux downloaded
+  a binary that could not run. The release script builds Linux as PIE and fails the release if a Linux
+  binary comes out as anything other than `ET_DYN`, so this cannot ship silently again. The 0.1.4
+  `linux_amd64` and `linux_arm64` assets were rebuilt and replaced in place; macOS and Windows assets
+  are untouched.
+
 ## [0.1.3] — 2026-11-01
 
 ### Removed
