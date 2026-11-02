@@ -7,7 +7,7 @@ disk your abandoned dev servers left behind.**
 [![Release](https://img.shields.io/github/v/release/gaurav-dhakal/vibe-check?label=release)](https://github.com/gaurav-dhakal/vibe-check/releases/latest)
 [![Last commit](https://img.shields.io/github/last-commit/gaurav-dhakal/vibe-check)](https://github.com/gaurav-dhakal/vibe-check/commits/main)
 [![License MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Platforms](https://img.shields.io/badge/platforms-linux%20%C2%B7%20macOS%20%C2%B7%20windows%20%C2%B7%20termux-blue)](#platforms)
+[![Platforms](https://img.shields.io/badge/platforms-linux%20%C2%B7%20macOS%20%C2%B7%20windows-blue)](#platforms)
 
 ![vibe-check picks a theme on first run, then shows CPU, memory, I/O, orphaned dev servers, port-to-process mapping with HTTP health, and node_modules sizes in one terminal pane](demo.gif)
 
@@ -44,12 +44,6 @@ irm https://raw.githubusercontent.com/gaurav-dhakal/vibe-check/main/install.ps1 
 
 ```powershell
 winget install gaurav-dhakal.vibe-check
-```
-
-**Termux (Android)**
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/gaurav-dhakal/vibe-check/main/install.sh | bash
 ```
 
 Then run it:
@@ -176,9 +170,9 @@ beats an estimate — came from being burned by tools that guessed.
 
 ## Platforms
 
-| Linux | macOS | Windows | Termux |
-|---|---|---|---|
-| full `/proc` fast path | gopsutil collectors | no `netstat`, Docker over named pipe | static arm64 build; some metrics need `tsu` |
+| Linux | macOS | Windows |
+|---|---|---|
+| full `/proc` fast path | gopsutil collectors | no `netstat`, Docker over named pipe |
 
 CI builds, tests **and runs** the headless snapshot on every OS — collected, not asserted.
 [docs/development.md](docs/development.md).
@@ -190,7 +184,6 @@ CI builds, tests **and runs** the headless snapshot on every OS — collected, n
 **How much CPU does it cost?** 2.8–4.2% of one core at steady idle; the first disk crawl peaks around 27% for ten seconds.
 **Can purge delete the wrong thing?** It confirms first and only ever targets directories the crawler itself listed.
 **Why not btop + a few scripts?** btop is a better process viewer. Nothing else gives you port→process→HTTP health and one-key artifact purge in the same pane.
-**Does it work on Termux?** Yes — the dashboard and disk crawl run out of the box; Android hides other processes' `/proc` from unprivileged apps, so ports and orphans need root.
 **Where are my GPU stats?** NVIDIA (via `nvidia-smi`) and AMD (via sysfs) swap the runtime pane for a GPU pane. Intel iGPUs expose no cheap utilisation counter, so the runtime pane stays — a dash beats an estimate.
 **Is it maintained?** Actively: CI on every push, tagged releases, issue templates answered.
 

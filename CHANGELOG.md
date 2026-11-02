@@ -33,8 +33,6 @@ Release binaries for every version are in [GitHub Releases](https://github.com/g
 - Homebrew tap [`gaurav-dhakal/homebrew-vibe-check`](https://github.com/gaurav-dhakal/homebrew-vibe-check)
   (`brew tap gaurav-dhakal/vibe-check && brew install vibe-check`) and a winget submission for 0.1.3
   (microsoft/winget-pkgs#468434) using the zip assets with nested portable aliases.
-- Termux support: `install.sh` detects Termux, installs into `$PREFIX/bin` (already on PATH) and prints
-  the Android `/proc` visibility caveat; the static `linux/arm64` release asset runs unmodified.
 - `Makefile` with `fmt vet lint test race build install release clean`; `make` resolves the version from
   the git tag exactly like the release script, so a local build reports what a released one would.
 - Issue forms for bugs and feature requests, a pull request template, and Dependabot for Go modules and
@@ -42,18 +40,23 @@ Release binaries for every version are in [GitHub Releases](https://github.com/g
 - `.editorconfig`, so tabs in Makefiles and two-space indentation elsewhere are a repo rule instead of a
   per-editor preference.
 
+### Removed
+- Termux as an advertised platform. The README install box, the Platforms tables and
+  `docs/development.md` no longer claim it: Android hides other processes' `/proc` and `/proc/net` from
+  unprivileged apps, so the interesting half of the dashboard would be dashes anyway. `install.sh` still
+  installs into `$PREFIX/bin` when it detects Termux, and the `linux/arm64` asset is unchanged.
+
 ### Changed
 - README install section gives every method its own labelled code box (curl, Homebrew, PowerShell,
-  winget, Termux) plus an uninstall section, and `demo.gif` re-records the first-run theme choice.
+  winget) plus an uninstall section, and `demo.gif` re-records the first-run theme choice.
 - `.gitignore` no longer leaves CI's `snapshot.json` artifact in the working tree.
 
 ### Fixed
-- **Termux.** The Linux release binaries are now position-independent (`-buildmode=pie`). Android's
-  loader refuses `ET_EXEC` with `has unexpected e_type: 2`, so every 0.1.4 install on Termux downloaded
-  a binary that could not run. The release script builds Linux as PIE and fails the release if a Linux
-  binary comes out as anything other than `ET_DYN`, so this cannot ship silently again. The 0.1.4
-  `linux_amd64` and `linux_arm64` assets were rebuilt and replaced in place; macOS and Windows assets
-  are untouched.
+- The Linux release binaries are now position-independent (`-buildmode=pie`). Android's loader refuses
+  `ET_EXEC` with `has unexpected e_type: 2`, which is why the 0.1.4 arm64 asset could not be exec'd on
+  a phone at all. The release script builds Linux as PIE and fails the release if a Linux binary comes
+  out as anything other than `ET_DYN`, so this cannot ship silently again. The 0.1.4 `linux_amd64` and
+  `linux_arm64` assets were rebuilt and replaced in place; macOS and Windows assets are untouched.
 
 ## [0.1.3] — 2026-11-01
 
