@@ -14,9 +14,15 @@ Docs and tooling only — no collector or UI behaviour changed, so 0.1.3 remains
 - `CONTRIBUTING.md` (ground rules, make targets, layout map, recipes for a new metric or platform),
   `SECURITY.md` (capability and blast-radius table, private reporting route, supported versions) and
   this changelog.
-- README rewritten around evidence: CI/release/download badges, a table of contents, a real 120×40
-  capture, per-engine docs, the headless JSON field list, measured CPU cost, and an explicit statement
-  of how the project was built.
+- README rewritten as a landing page: animated `demo.gif` above the fold, a comparison table against
+  htop/lsof/docker stats/ncdu, a Mermaid architecture diagram, copy-paste `jq` usage examples, an FAQ,
+  a star-history chart and a star callout; deep content (engines, accuracy, full config, keymap, JSON
+  schema, development) moved to `docs/`.
+- Homebrew tap [`gaurav-dhakal/homebrew-vibe-check`](https://github.com/gaurav-dhakal/homebrew-vibe-check)
+  (`brew tap gaurav-dhakal/vibe-check && brew install vibe-check`) and a winget submission for 0.1.3
+  (microsoft/winget-pkgs#468434) using the zip assets with nested portable aliases.
+- Termux support: `install.sh` detects Termux, installs into `$PREFIX/bin` (already on PATH) and prints
+  the Android `/proc` visibility caveat; the static `linux/arm64` release asset runs unmodified.
 - `Makefile` with `fmt vet lint test race build install release clean`; `make` resolves the version from
   the git tag exactly like the release script, so a local build reports what a released one would.
 - Issue forms for bugs and feature requests, a pull request template, and Dependabot for Go modules and

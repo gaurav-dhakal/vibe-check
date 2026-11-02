@@ -6,7 +6,16 @@ set -euo pipefail
 
 REPO="${REPO:-gaurav-dhakal/vibe-check}"
 WANT_VERSION="${VIBE_CHECK_VERSION:-latest}"
-INSTALL_DIR="${VIBE_CHECK_INSTALL_DIR:-$HOME/.local/bin}"
+
+# Termux runs the static linux/arm64 build; its $PREFIX/bin is already on PATH.
+TERMUX=""
+case "${PREFIX:-}" in *com.termux*) TERMUX=1 ;; esac
+[ "$(uname -o 2>/dev/null || true)" = "Android" ] && TERMUX=1
+if [ -n "$TERMUX" ]; then
+  INSTALL_DIR="${VIBE_CHECK_INSTALL_DIR:-$PREFIX/bin}"
+else
+  INSTALL_DIR="${VIBE_CHECK_INSTALL_DIR:-$HOME/.local/bin}"
+fi
 
 say() { printf '\033[1;36m»\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m✘\033[0m %s\n' "$*" >&2; exit 1; }
@@ -89,4 +98,7 @@ case ":$PATH:" in
 esac
 
 "$INSTALL_DIR/vibe-check" --version || die "installed binary did not run"
+if [ -n "$TERMUX" ]; then
+  printf '\n  Termux note: Android hides other processes'\'' /proc entries and /proc/net from\n  unprivileged apps, so ports, orphans and other-process CPU show dashes\n  until you run as root (e.g. "pkg install tsu && tsu"). The dashboard, disk\n  crawl and your own process stats work without it.\n\n'
+fi
 say "done — run  vibe-check   (or  vcheck)"
