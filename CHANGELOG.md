@@ -6,7 +6,7 @@ All notable changes to `vibe-check` are documented here. The format follows
 
 Release binaries for every version are in [GitHub Releases](https://github.com/gaurav-dhakal/vibe-check/releases).
 
-## [Unreleased]
+## [0.1.4] — 2026-11-02
 
 ### Added
 - **GPU stats.** A new collector reads `nvidia-smi` on any OS, or AMD's sysfs surface
