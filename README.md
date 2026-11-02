@@ -148,6 +148,6 @@ repo the same way.
 
 ## About
 
-**Vibecoded.** Built pair-programming with an AI agent (Qoder) across engine, UI, packaging and CI —
-with humans making the calls on architecture, naming and "no, that number has to be real."
+**Vibecoded.** This project was built pair-programming with an AI agent.
+
 MIT licensed, see [LICENSE](LICENSE).
