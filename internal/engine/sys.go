@@ -61,6 +61,11 @@ func (e *Engine) updateSys() {
 		}
 		ns.NumCPU = runtimeNumCPU()
 		ns.CPUModel = cpuModelName()
+		if infos, err := cpu.InfoWithContext(ctx); err == nil {
+			for _, ci := range infos {
+				ns.CoreMHz = append(ns.CoreMHz, ci.Mhz)
+			}
+		}
 	}
 
 	if up, err := host.UptimeWithContext(ctx); err == nil {
@@ -83,6 +88,7 @@ func (e *Engine) updateSys() {
 	if sm, err := mem.SwapMemoryWithContext(ctx); err == nil && sm != nil {
 		ns.SwapTotal, ns.SwapUsed = sm.Total, sm.Used
 	}
+	ns.Disks = diskUsage(ctx)
 
 	e.diffIO(ctx, &ns)
 	e.readFDs(&ns)
@@ -98,6 +104,9 @@ func (e *Engine) updateSys() {
 	}
 	h.CPU.Push(ns.CPUPercent)
 	h.Mem.Push(ns.MemPercent)
+	if len(ns.Disks) > 0 {
+		h.Disk.Push(ns.Disks[0].Percent)
+	}
 	h.NetR.Push(float64(ns.NetRecvBps))
 	h.NetW.Push(float64(ns.NetSentBps))
 	h.DiskR.Push(float64(ns.DiskReadBps))
@@ -158,4 +167,47 @@ func runtimeNumCPU() int {
 		return 1
 	}
 	return n
+}
+
+// realFSType keeps only filesystems that hold user data — tmpfs, overlay and
+// the rest of the kernel plumbing would flood the storage pane.
+func realFSType(fs string) bool {
+	switch fs {
+	case "ext2", "ext3", "ext4", "btrfs", "xfs", "zfs", "f2fs", "jfs", "reiserfs",
+		"apfs", "hfs", "ntfs", "refs", "fat", "vfat", "fat32", "exfat", "udf":
+		return true
+	}
+	return false
+}
+
+// diskUsage samples every real partition, largest first, capped so a
+// container host with 40 mounts cannot bloat every snapshot copy.
+func diskUsage(ctx context.Context) []DiskUsage {
+	ps, err := disk.PartitionsWithContext(ctx, false)
+	if err != nil {
+		return nil
+	}
+	out := make([]DiskUsage, 0, 8)
+	for _, p := range ps {
+		if !realFSType(p.Fstype) {
+			continue
+		}
+		u, err := disk.UsageWithContext(ctx, p.Mountpoint)
+		if err != nil || u.Total == 0 {
+			continue
+		}
+		out = append(out, DiskUsage{
+			Mount: p.Mountpoint, Fstype: p.Fstype,
+			Total: u.Total, Used: u.Used, Percent: clampPct(u.UsedPercent),
+		})
+	}
+	for i := 1; i < len(out); i++ { // insertion sort: tiny n
+		for j := i; j > 0 && out[j].Total > out[j-1].Total; j-- {
+			out[j], out[j-1] = out[j-1], out[j]
+		}
+	}
+	if len(out) > 10 {
+		out = out[:10]
+	}
+	return out
 }

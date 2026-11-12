@@ -6,6 +6,101 @@ All notable changes to `vibe-check` are documented here. The format follows
 
 Release binaries for every version are in [GitHub Releases](https://github.com/gaurav-dhakal/vibe-check/releases).
 
+## [Unreleased]
+
+### Added
+- **Apps tab (`6`) — an inventory of everything installed.** One list built from whatever the host
+  actually has: apt/dpkg, dnf/yum, rpm, pacman, snap and flatpak on Linux; brew formulae *and* casks on
+  macOS; winget on Windows — plus npm globals and loose `.AppImage` files on every platform, because
+  those live outside any manager's view. Size, version, manager and description per row, `/` to filter,
+  `s` to sort by name/size/manager, `y`/`Y` to copy.
+- **Per-app file browser.** `⏎` on a package lists every path it owns with per-folder file counts and
+  byte totals (`apt`/`rpm`/`pacman` from the manager's own file list; snap, flatpak, casks, AppImages
+  and npm from their real directories). Scrollable, `y` copies a path, `Esc` closes. The walk is
+  asynchronous and capped, and selecting another app supersedes the walk in flight.
+- **Uninstall, with a choice about the files.** `x` removes the app and leaves config/data alone; `X`
+  removes it *and* its files using each manager's own purge semantics — `apt-get purge`, `dnf/yum
+  remove`, `pacman -Rns`, `snap remove --purge`, `flatpak uninstall --delete-data`, `brew
+  uninstall --purge` / `brew uninstall --cask --zap`, `winget uninstall --silent`. Both confirm first
+  and name the exact command.
+- **Install from a file (`i`).** `.deb` and `.rpm` go to apt/dnf/yum so dependencies resolve;
+  `.tar.gz`/`.tar.xz`/`.tar.bz2`/`.zip` extract under `~/Apps`; a `.AppImage` is staged to `~/Apps`,
+  made executable and registered in the desktop tray with a `.desktop` entry (and
+  `update-desktop-database` when present). macOS accepts `.pkg`/`.dmg`/`.app`/`.zip`; Windows accepts
+  `.msi`/`.exe`/`.zip`.
+  Archive extraction is zip-slip checked — an entry that escapes the destination aborts the whole
+  extract.
+- **Privilege elevation that cannot hang.** Anything a manager wants root for runs through `pkexec`, or
+  `sudo -n` when polkit is absent, and as the real user when the manager is a per-user one (flatpak,
+  brew, npm). There is no path where the TUI waits on a password prompt it cannot show.
+- **The dashboard is a task manager now: six panes** (`h`/`l` to select, `f` to zoom). CPU gained a
+  history sparkline per core plus model/core-count/clock identity lines; a new `disk · usage` pane
+  charts every real partition (tmpfs, overlay and friends filtered out) with free/total bytes and a
+  summed free figure; `i/o · net` uses auto-scaled charts so 4 KB/s and 400 MB/s are both readable; and a
+  new `boost · clean` pane collects every reclaim lever with live numbers.
+- **Reclaim keys.** `c` runs a boost & clean sweep — kill orphans, purge build junk, drop the page
+  cache — after listing exactly what it will do. `C` toggles auto-clean (unattended purge of junk at or
+  above `auto_clean_junk_mb`, checked every minute) and persists it to config. `b` drops the kernel page
+  cache so free RAM is honest.
+- `--json` gains `sys.disks[]` (mount, fstype, total, used, percent) and `sys.core_mhz[]`.
+- Config gains `auto_clean` (default off) and `auto_clean_junk_mb` (default 256, floored at 32).
+- **The apps list is live.** A two-second watch on the fingerprints a package operation actually
+  leaves behind — `/var/lib/dpkg/status`, the rpm and pacman databases, snapd state, the flatpak and
+  brew folders, npm globals, `~/Apps` — reloads the inventory when something outside vibe-check
+  changed them, so an `apt install` in another terminal shows up without `r`. It costs a handful of
+  `stat` calls, never a shell-out, and it stops with the tab: an idle-released list has nothing to
+  keep current.
+- **The system's own file picker for install-from-file.** `i` then `Ctrl+f` opens the dialog the
+  desktop itself provides — on Linux that is the XDG desktop portal's `FileChooser`, the same request
+  a browser makes, so COSMIC, GNOME and KDE answer with their native picker even on a machine that has
+  no `zenity` at all (`zenity`/`kdialog` remain as fallbacks); macOS gets `osascript`'s chooser and
+  Windows the shell file dialog. A cancel is reported as a cancel and a portal refusal as its own
+  error. Over SSH, in a container or on a bare VT the keys are the same; the path is typed instead,
+  because opening a chooser with no compositor would hang forever.
+- **Every apps and reclaim action has a CLI twin**, so nothing needs a terminal wide enough to see it:
+  `apps list|files|remove|install|managers`, `boost` and `autoclean [on|off]`, each with `--json`
+  where a machine wants to read it. `apps remove` refuses to act without `--yes`, and an ambiguous
+  name errors with its candidates instead of guessing.
+- Key-binding regression tests for the apps tab, the file browser and the install modal
+  (`internal/ui/keycheck_test.go`), an engine test for the pinned/idle-release contract, plus AppImage
+  name parsing, unknown-manager and missing-file cases in `internal/apps`.
+- A render-geometry test (`internal/ui/render_test.go`) that draws all six tabs × the help drawer,
+  palette, installer, file browser, confirmation and zoom at 80×24, 60×20, 50×14, 40×12 and 120×40,
+  and fails if a single row escapes the terminal.
+
+### Changed
+- **Search ranks.** `/` now returns the best fuzzy matches first and suspends the sort column while a
+  filter is live, so `vim` in the apps inventory leads with `vim-tiny` and `vim-common` instead of the
+  name-sorted list's accidental subsequences. The apps list also stopped sorting the engine's own
+  slice in place.
+- **Memory.** The package inventory is the largest single thing the process holds, so it is read only
+  when the apps tab opens (and stays pinned while the tab or file browser is on screen) and released
+  about a minute after you leave, with the pages handed back to the OS. Measured on a 2 427-package
+  host: live heap 1–2 MB, and `smaps_rollup` puts private anonymous memory at ~6 MB — the rest of the
+  ~16 MB RSS is the mapped binary. The UI pins what it is reading instead of the engine guessing.
+- Dashboard history is read into a reusable per-model buffer, so the 60 FPS render path no longer
+  allocates a history slice per pane per frame.
+- The runtime now collects eagerly (`GOGC=40`) against a 96 MB soft limit.
+- Mouse input is ignored while an overlay owns the screen, so clicks cannot move the list underneath.
+- README leads with the apps manager, the task-manager dashboard and the memory posture; `docs/` covers
+  the new keys, config keys and JSON fields.
+
+### Fixed
+- **Nothing is hidden on a small or minimised terminal.** The bug behind the reports was measurement:
+  a CSI's introducer `[` sits inside the byte range that *ends* an escape sequence, so the width
+  helper stopped after the `ESC` and counted `1;38;2;137;179;250m` as twenty columns of text. Every
+  truecolor hint looked far wider than it was, so the key bar, header and tab strip wrapped and
+  shifted. With the measurement fixed: the key bar wraps to a second row instead of truncating (so
+  `x uninstall` and `i install file` survive at 60 columns), the tab strip drops counts then shortens
+  labels then gives its row back, list tables drop their right-most columns rather than wrap mid-row,
+  the dashboard collapses from three panes across to two and one, every modal caps to the window and
+  scrolls, and the old 20×8 "blank screen" floor is gone.
+- A crash when a CPU history sparkline was drawn from a flat or single-sample series: the level table
+  was measured in bytes instead of runes, so a zero-span gauge could index past the end.
+- Returning to the apps tab after an idle release now re-reads the inventory instead of showing an
+  empty list — the reload trigger looks at what is in memory, not at a generation counter the release
+  also bumps.
+
 ## [0.1.4] — 2026-11-02
 
 ### Added

@@ -26,6 +26,8 @@ type Config struct {
 	WatchPorts         []int    `toml:"watch_ports"`    // extra ports always probed
 	PurgeWorkers       int      `toml:"purge_workers"`  // concurrency of delete engine
 	ScanWorkers        int      `toml:"scan_workers"`
+	AutoClean          bool     `toml:"auto_clean"`         // unattended junk purge
+	AutoCleanJunkMB    int      `toml:"auto_clean_junk_mb"` // only purge dirs at least this big
 	// Path is where this config was read from; it is never written to disk,
 	// so a theme chosen in the app lands back in the same file.
 	Path string `toml:"-"`
@@ -54,9 +56,10 @@ func Default() Config {
 			"node_modules", "target", ".next", ".venv", "venv",
 			"dist", "build", "out", ".turbo", ".parcel-cache",
 		},
-		WatchPorts:   []int{3000, 5173, 8080},
-		PurgeWorkers: 16,
-		ScanWorkers:  6,
+		WatchPorts:      []int{3000, 5173, 8080},
+		PurgeWorkers:    16,
+		ScanWorkers:     6,
+		AutoCleanJunkMB: 256,
 	}
 }
 
@@ -105,6 +108,9 @@ func Load(explicit string) (Config, error) {
 	if len(cfg.ArtifactKinds) == 0 {
 		cfg.ArtifactKinds = Default().ArtifactKinds
 	}
+	if cfg.AutoCleanJunkMB < 32 {
+		cfg.AutoCleanJunkMB = 32
+	}
 	return cfg, nil
 }
 
@@ -139,6 +145,12 @@ func InitWithTheme(theme string) (string, error) {
 // SaveTheme rewrites only the theme key, leaving every other line and comment
 // exactly as the user left them. A missing file is created with the defaults.
 func SaveTheme(p, name string) error {
+	return Set(p, "theme", `"`+name+`"`)
+}
+
+// Set rewrites one top-level `key = value` line in place, appending it when
+// absent. Used for settings toggled live in the UI (theme, auto-clean).
+func Set(p, key, value string) error {
 	if p == "" {
 		p = Path()
 	}
@@ -146,20 +158,22 @@ func SaveTheme(p, name string) error {
 	if err != nil {
 		if os.IsNotExist(err) {
 			cfg := Default()
-			cfg.Theme = name
+			if key == "theme" {
+				cfg.Theme = strings.Trim(value, `"`)
+			}
 			return writeAt(p, cfg)
 		}
 		return err
 	}
-	key := `theme = "` + name + `"`
+	line := key + " = " + value
 	lines := strings.Split(string(data), "\n")
 	for i, ln := range lines {
-		if isThemeKey(ln) {
-			lines[i] = key
+		if k, _, ok := strings.Cut(strings.TrimSpace(ln), "="); ok && strings.TrimSpace(k) == key {
+			lines[i] = line
 			return os.WriteFile(p, []byte(strings.Join(lines, "\n")), 0o644)
 		}
 	}
-	return os.WriteFile(p, []byte(key+"\n"+string(data)), 0o644)
+	return os.WriteFile(p, []byte(line+"\n"+string(data)), 0o644)
 }
 
 func writeAt(p string, cfg Config) error {
@@ -175,9 +189,4 @@ func writeAt(p string, cfg Config) error {
 		return err
 	}
 	return f.Sync()
-}
-
-func isThemeKey(line string) bool {
-	k, _, ok := strings.Cut(strings.TrimSpace(line), "=")
-	return ok && strings.TrimSpace(k) == "theme"
 }

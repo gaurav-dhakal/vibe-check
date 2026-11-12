@@ -26,7 +26,14 @@ artifact_kinds        = ["node_modules", "target", ".next", ".venv", "venv",
 watch_ports           = [3000, 5173, 8080]
 purge_workers         = 16
 scan_workers          = 6
+auto_clean            = false             # unattended junk purge, checked every minute
+auto_clean_junk_mb    = 256               # only purge build junk at least this big
 ```
+
+`auto_clean` is what the dashboard's `C` key toggles, and the toggle writes itself back into this file.
+When it is on, the engine re-checks the artifact list every minute and purges anything at or above
+`auto_clean_junk_mb` (floored at 32 MB so a stray `dist/` is never deleted for being 4 KB). It is the
+only destructive loop that runs without asking, which is why it defaults to off.
 
 ## CLI flags
 

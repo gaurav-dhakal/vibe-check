@@ -9,8 +9,11 @@ product, so treat these as the attack surface:
 |---|---|---|
 | Signal any process you own | `x` / `X`, *kill all orphans* | kills work you did not expect to lose |
 | Delete directories | `x` on a disk artifact | irreversible; asks for confirmation and only lists paths the crawler found |
+| Uninstall packages, as root where the manager demands it | `x` / `X` on the apps tab | runs `apt-get remove/purge`, `dnf`/`yum remove`, `rpm -e`, `pacman -Rns`, `snap remove [--purge]`, `flatpak uninstall [--delete-data]`, `brew uninstall [--purge/--zap]`, `winget uninstall` — elevated through `pkexec` (or `sudo -n`) only when the manager needs root, and `X` deletes the app's config/data too |
+| Install from a file you point at | `i` on the apps tab | runs the host installer on that file, extracts archives under `~/Apps`, and for an AppImage writes an executable plus a `.desktop` tray entry |
+| Drop the kernel page cache | `b`, `c` | evicts clean/dirty cache pages; no data loss, but it re-warms disk for a while, and it is elevated |
 | Start/stop containers | `x` on the docker tab | local runtime socket only |
-| Read command lines, sockets, disk metadata | every collector | shown to you and copied by `y`/`Y` to your clipboard |
+| Read command lines, sockets, disk metadata, package file lists | every collector | shown to you and copied by `y`/`Y` to your clipboard |
 | Read the container API socket | docker engine | the docker socket is root-equivalent on most hosts; the tool only ever reads it or calls start/stop |
 
 There is no inbound surface: the tool listens on nothing, and it makes no outbound connections. The
@@ -20,8 +23,13 @@ for the latency column.
 ## What is guaranteed
 
 - No telemetry, no analytics, no update checks, no remote code paths.
-- Artifact bytes, listener ownership and container state are read-only queries; nothing is written
-  outside the purge action you confirm.
+- Artifact bytes, listener ownership, container state and package inventories are read-only queries.
+  Everything that writes — purge, uninstall, install, kill — is a key you pressed, and destructive ones
+  show you the target list first.
+- Elevation is `pkexec` when polkit is available and `sudo -n` otherwise, never `sudo -S` or a hidden
+  prompt: a privileged action either gets a real authorisation prompt or fails with a toast.
+- Archive installers refuse an entry that resolves outside the destination directory (zip-slip), and
+  the whole extract aborts rather than half-writing it.
 - `--json` writes only to stdout; terminal restore sequences go to the tty, so piping cannot corrupt
   your shell.
 - Release assets are published with `checksums.txt`, and both installers refuse to install an artifact

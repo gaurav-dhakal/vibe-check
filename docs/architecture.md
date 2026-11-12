@@ -11,10 +11,11 @@ flowchart LR
         O[ports · kernel TCP tables + HEAD probe]
         D[containers · raw docker/podman socket]
         C[artifact crawler · getdents64]
+        A[apps · native managers, on demand]
     end
     E -- immutable snapshot · atomic.Pointer --> S[snapshot store]
     S -- diff read --> U[Bubbletea UI · 60 FPS dual-buffer redraw]
-    U -- "x: kill / purge / start-stop" --> E
+    U -- "x: kill / purge / uninstall · i: install" --> E
 ```
 
 ## The engines
@@ -50,6 +51,23 @@ the runtime pane in place; the dashboard swaps that pane for GPU stats only when
 **FD and I/O pressure** — `/proc/sys/fs/file-nr` against the system limit, plus per-process FD sampling
 that only reads what changed since the last tick.
 
+**Apps inventory** — the one collector that is not on a timer, because it cannot be: building the list
+means shelling out to every manager on the host (`dpkg-query`, `rpm -qa`, `pacman -Qii`, `snap list`,
+`flatpak list`, `brew info --json=v2`, `winget list`) and reading `package.json` for each npm global. So
+it runs once when you open the tab, publishes through the same `atomic.Pointer`, and is dropped again
+about a minute after you leave. Per-app file listings run in their own goroutine, keyed by
+manager+name+version: selecting a different app supersedes the walk in flight rather than queueing it,
+and the walk recurses only into directories the manager cannot enumerate itself (AppImages, npm, snap,
+flatpak, casks) with a 60 000-file cap, because recursing through `/usr/share` for every shared path is
+both slow and meaningless. Uninstall and install shell out to the native manager — never to a reaper of
+our own invention — and ask polkit (`pkexec`, else `sudo -n`) when the manager demands root.
+
+**Reclaim levers** — the dashboard's boost pane is a thin front for three engines that already exist:
+the orphan killer, the purge engine, and a page-cache drop (`/proc/sys/vm/drop_caches`, `purge(8)`,
+elevated). `auto_clean` puts the purge engine on the minute tick for build junk above
+`auto_clean_junk_mb`; it is off by default because it is the only loop that deletes without asking, and
+toggling it writes the choice back to config so it survives a restart.
+
 **Terminal recovery** — the alternate screen, cursor and attributes are restored on clean quit, on
 `SIGINT`, `SIGTERM` and `SIGHUP`, and from a recovered panic inside the UI. A killed `vibe-check` never
 leaves your shell in a broken state.
@@ -72,3 +90,16 @@ The claim is boring and deliberate: a number is shown only when the kernel or AP
 Measured on an 8-core Linux laptop, in 10-second CPU buckets of a live run: **27%** of a core during the
 first ten seconds while the initial crawl runs (higher on a cold page cache), then **2.8–4.2%** at steady
 idle. `--json` runs the crawl unthrottled and returns a complete snapshot in about **1.6 s**.
+
+## Memory
+
+The same run, measured rather than estimated: `gctrace` reports the heap at **1→2 MB with a 1 MB goal**,
+and `smaps_rollup` reports **6 MB of private anonymous memory** inside ~16 MB of RSS — the other 10 MB is
+the mapped binary, clean pages the kernel reclaims first under pressure.
+
+Three rules keep it there. History is read into a reusable per-model buffer (`Engine.RingValues`), so a
+60 FPS frame allocates no slices for seven rings plus one per core. The package inventory — the only
+collector large enough to be worth timing, about 1 MB for 2 400 packages on this host — is pinned only
+while the apps tab or a file listing is on screen, then released by the minute tick with the pages handed
+back to the OS. And the runtime starts with `GOGC=40` plus a 96 MB soft limit, so long sessions collect
+eagerly instead of growing.

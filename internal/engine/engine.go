@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gaurav-dhakal/vibe-check/internal/apps"
 	"github.com/gaurav-dhakal/vibe-check/internal/config"
 )
 
@@ -32,6 +33,21 @@ type Engine struct {
 	fdReadable  atomic.Int64
 	procTotal   atomic.Int64
 
+	appsList    atomic.Pointer[[]apps.Package]
+	appsLoading atomic.Bool
+	appsGen     atomic.Int64
+	appsErr     atomic.Pointer[string]
+	appsPinned  atomic.Bool
+	autoClean   atomic.Bool
+
+	appsFiles atomic.Pointer[apps.FileList]
+	filesFor  atomic.Pointer[string]
+	filesReq  atomic.Int64
+	filesDone atomic.Int64
+	filesGen  atomic.Int64
+	filesErr  atomic.Pointer[string]
+	appsStamp atomic.Int64 // mtime/size fingerprint of the package databases
+
 	events chan Event
 
 	histMu  sync.Mutex
@@ -51,6 +67,7 @@ type Engine struct {
 type History struct {
 	CPU      Ring
 	Mem      Ring
+	Disk     Ring
 	CPUCores []Ring
 	NetR     Ring
 	NetW     Ring
@@ -79,17 +96,26 @@ func (r *Ring) Push(v float64) {
 	}
 }
 
-// Values returns samples in chronological order.
-func (r *Ring) Values() []float64 {
-	if !r.full {
-		out := make([]float64, r.next)
-		copy(out, r.buf[:r.next])
-		return out
+// Values returns samples in chronological order, reusing dst when it is
+// large enough — the 60fps render loop must not allocate a history copy
+// per pane per frame.
+func (r *Ring) Values(dst []float64) []float64 {
+	n := r.next
+	if r.full {
+		n = len(r.buf)
 	}
-	out := make([]float64, 0, len(r.buf))
-	out = append(out, r.buf[r.next:]...)
-	out = append(out, r.buf[:r.next]...)
-	return out
+	if cap(dst) < n {
+		dst = make([]float64, n)
+	} else {
+		dst = dst[:n]
+	}
+	if !r.full {
+		copy(dst, r.buf[:n])
+		return dst
+	}
+	copy(dst, r.buf[r.next:])
+	copy(dst[len(r.buf)-r.next:], r.buf[:r.next])
+	return dst
 }
 
 func New(cfg config.Config) *Engine {
@@ -107,8 +133,13 @@ func New(cfg config.Config) *Engine {
 	e.artifacts.Store(&emptyA)
 	e.dockerErr.Store(new(string))
 	e.scan.Store(&ScanState{})
+	emptyApps := []apps.Package{}
+	e.appsList.Store(&emptyApps)
+	e.appsErr.Store(new(string))
+	e.autoClean.Store(cfg.AutoClean)
 	e.history.CPU = NewRing(histLen)
 	e.history.Mem = NewRing(histLen)
+	e.history.Disk = NewRing(histLen)
 	e.history.NetR = NewRing(histLen)
 	e.history.NetW = NewRing(histLen)
 	e.history.DiskR = NewRing(histLen)
@@ -132,7 +163,14 @@ func (e *Engine) Run(ctx context.Context) {
 		gpuMS = 3000
 	}
 	go e.loop(ctx, "gpu", ms(gpuMS), e.updateGPUs)
+	go e.loop(ctx, "autoclean", 60*time.Second, func() {
+		e.autoCleanTick()
+		e.appsIdleTick()
+	})
 	go e.artifactLoop(ctx)
+	// Two seconds because an install you start now should be on screen
+	// before you alt-tab back; it costs six stats, not a shell-out.
+	go e.loop(ctx, "appswatch", 2*time.Second, e.appsWatchTick)
 }
 
 // loop runs collect() on a fixed cadence; panics in one worker must never
@@ -182,6 +220,18 @@ func (e *Engine) History() *History {
 	e.histMu.Lock()
 	defer e.histMu.Unlock()
 	return &e.history
+}
+
+// RingValues reads one ring under the history lock into dst (reallocated
+// only when too small) and returns it — the render loop's zero-alloc hook.
+func (e *Engine) RingValues(get func(*History) *Ring, dst []float64) []float64 {
+	e.histMu.Lock()
+	defer e.histMu.Unlock()
+	r := get(&e.history)
+	if r == nil {
+		return nil
+	}
+	return r.Values(dst)
 }
 
 func (e *Engine) Events() <-chan Event { return e.events }

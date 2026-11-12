@@ -14,7 +14,7 @@ import (
 func newTestModel(w, h int) *model {
 	cfg := config.Default()
 	th := theme.Default(cfg.Theme)
-	m := New(nil, cfg, th, cfg.Theme)
+	m := New(engine.New(cfg), cfg, th, cfg.Theme)
 	m.width, m.height = w, h
 	m.snap = engine.Snapshot{Sys: engine.System{Hostname: "test", NumCPU: 8, OS: "linux"}}
 	return m

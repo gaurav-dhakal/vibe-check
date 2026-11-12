@@ -13,6 +13,7 @@ about 1.6 s.
                  core_percents[], load_1/5/15, mem_used/total/avail/percent,
                  swap_used/total, disk_read_bps, disk_write_bps, net_recv_bps,
                  net_sent_bps, proc_total, fd_alloc, fd_count, fd_max, fd_per_proc,
+                 disks[]{mount,fstype,total,used,percent}, core_mhz[],
                  orphan_count, orphan_rss
   "procs":       pid, ppid, uid, user, name, cmdline, state, rss, cpu_percent,
                  age_sec, threads, orphan
@@ -45,3 +46,29 @@ vcheck --json | jq -r '.gpus[]? | "\(.name) \(.util_percent)% \(.mem_used)/\(.me
 # fail a CI step when a watch port is not bound
 vcheck --json | jq -e '.ports[] | select(.port == 8080 and .monitored)' >/dev/null
 ```
+
+## Commands without the TUI
+
+Every action the apps tab and the reclaim panel expose has a subcommand, so nothing you can do with a
+key needs a terminal that is wide enough to see it in.
+
+```
+vibe-check apps list [--filter <substr>] [--json]   # apt dnf rpm pacman snap flatpak brew winget npm appimage
+vibe-check apps files <name> [--json]               # every path the app owns + file/folder/byte totals
+vibe-check apps remove <name> --yes                 # the manager's own uninstall
+vibe-check apps remove <name> --purge --yes         # …and its files and settings
+vibe-check apps install <path>                      # .deb .rpm .tar.gz .tar.xz .AppImage (per-platform more)
+vibe-check apps managers                            # which managers this host reports
+vibe-check boost                                    # drop the page cache; prints free RAM before → after
+vibe-check autoclean [on|off]                       # read or write the config toggle
+```
+
+Behaviour notes:
+
+- `apps remove` without `--yes` is a refusal, not a prompt: automation should decide, not discover a
+  hung process waiting on stdin.
+- A name is matched exactly first, then as a unique substring; an ambiguous name errors with the
+  candidates instead of picking one.
+- Elevation follows the TUI: `pkexec`, else `sudo -n` — one visible prompt, and it fails rather than
+  asking for a password it cannot show.
+- `--json` on the apps subcommands emits the same shapes as `vibe-check --json` sections.

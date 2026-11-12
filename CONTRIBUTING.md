@@ -40,10 +40,13 @@ make            # lint, test, build
 
 ```
 cmd/                 cobra entry point, flag wiring, terminal restoration
-internal/engine/     collectors: procs, ports, docker, artifacts, sys, kill, clipboard
+internal/apps/       installed-package inventory, uninstall/install, per-app file walks
+                     (apps_linux.go, apps_darwin.go, apps_windows.go hold the manager commands)
+internal/engine/     collectors: procs, ports, docker, artifacts, sys, kill, clipboard, apps
 internal/engine/*_linux.go, *_other.go, *_unix.go, *_windows.go
                      platform splits chosen by build tags — never runtime OS sniffing
-internal/ui/         Bubbletea model, views, overlays, chrome
+internal/ui/         Bubbletea model, views, overlays, chrome (appstab.go: apps list, file
+                     browser, install modal, reclaim actions)
 internal/theme/      palettes and colour-depth negotiation
 internal/config/     TOML surface and defaults
 scripts/             release build and the snapshot verifier used by CI

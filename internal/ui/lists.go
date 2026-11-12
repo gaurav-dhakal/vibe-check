@@ -30,13 +30,16 @@ func (m *model) filteredProcs() []engine.Proc {
 			return strings.ToLower(fmt.Sprintf("%s %s %d", p.Name, p.CmdLine, p.Pid))
 		})
 	}
-	switch m.sortMode[TabProcs] {
-	case 1:
-		sort.Slice(out, func(i, j int) bool { return out[i].RSS > out[j].RSS })
-	case 2:
-		sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	default:
-		sort.Slice(out, func(i, j int) bool { return out[i].CPUPercent > out[j].CPUPercent })
+	// a live search orders by match quality; the sort column resumes once it clears
+	if m.filter == "" {
+		switch m.sortMode[TabProcs] {
+		case 1:
+			sort.Slice(out, func(i, j int) bool { return out[i].RSS > out[j].RSS })
+		case 2:
+			sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+		default:
+			sort.Slice(out, func(i, j int) bool { return out[i].CPUPercent > out[j].CPUPercent })
+		}
 	}
 	m.procsKey, m.procsVal = key, out
 	return out
@@ -77,13 +80,15 @@ func (m *model) filteredArtifacts() []engine.Artifact {
 	out := fuzzyKeep(m.filter, src, func(a engine.Artifact) string {
 		return strings.ToLower(a.Path + " " + a.Kind + " " + a.Project)
 	})
-	switch m.sortMode[TabDisk] {
-	case 1:
-		sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
-	case 2:
-		sort.Slice(out, func(i, j int) bool { return out[i].Kind < out[j].Kind })
-	default:
-		sort.Slice(out, func(i, j int) bool { return out[i].Size > out[j].Size })
+	if m.filter == "" {
+		switch m.sortMode[TabDisk] {
+		case 1:
+			sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+		case 2:
+			sort.Slice(out, func(i, j int) bool { return out[i].Kind < out[j].Kind })
+		default:
+			sort.Slice(out, func(i, j int) bool { return out[i].Size > out[j].Size })
+		}
 	}
 	m.diskKey, m.diskVal = key, out
 	return out
@@ -105,6 +110,10 @@ func (m *model) rawRow(i int) any {
 		}
 	case TabDisk:
 		if l := m.filteredArtifacts(); i < len(l) {
+			return l[i]
+		}
+	case TabApps:
+		if l := m.filteredPkgs(); i < len(l) {
 			return l[i]
 		}
 	}
@@ -137,6 +146,10 @@ func (m *model) rowIdentity(i int) string {
 		if l := m.filteredArtifacts(); i < len(l) {
 			return l[i].Path
 		}
+	case TabApps:
+		if l := m.filteredPkgs(); i < len(l) {
+			return l[i].Name
+		}
 	}
 	return ""
 }
@@ -156,16 +169,59 @@ type cellSpec struct {
 	right bool
 }
 
+// flexCols assigns column widths that add up to total, separators included.
+//
+// A plan sized for 80 columns does not fit in 60, and the row that overflows
+// wraps the last column onto a second screen row — which is how the apps list
+// lost its INFO column on a narrow terminal. So the widest column gets shaved
+// one cell at a time until the row fits, never below four cells.
 func flexCols(cols []column, total int) []column {
-	fixed := 0
 	out := make([]column, len(cols))
 	copy(out, cols)
-	for i, c := range out {
+	if len(out) == 0 {
+		return out
+	}
+	const minCol = 4
+	room := max(minCol, total-max(0, len(out)-1))
+	// Trailing columns go first when even four cells each cannot fit: a column
+	// squeezed below four is unreadable, and the ones on the left are what
+	// identify the row.
+	for len(out) > 1 && len(out)*minCol > room {
+		out = out[:len(out)-1]
+		room = max(minCol, total-max(0, len(out)-1))
+	}
+
+	var fixedSum, nFlex int
+	for _, c := range out {
 		if c.flex {
-			out[i].w = max(4, total-fixed)
+			nFlex++
 			continue
 		}
-		fixed += c.w
+		fixedSum += c.w
+	}
+	for fixedSum > room-minCol*nFlex {
+		bi := -1
+		for i, c := range out {
+			if c.flex || c.w <= minCol {
+				continue
+			}
+			if bi < 0 || c.w > out[bi].w {
+				bi = i
+			}
+		}
+		if bi < 0 {
+			break
+		}
+		out[bi].w--
+		fixedSum--
+	}
+	if nFlex > 0 {
+		per := max(minCol, (room-fixedSum)/nFlex)
+		for i, c := range out {
+			if c.flex {
+				out[i].w = per
+			}
+		}
 	}
 	return out
 }
@@ -200,7 +256,7 @@ func rowCells(cols []column, cells []cellSpec) string {
 // renderList draws one full-size bordered pane containing a table.
 // It records rowTop/listRows in geo for mouse hits.
 func (m *model) renderList(w, h int, title, badge string, cols []column, cells func(idx int) []cellSpec, n int, selStyle func(bool) lipgloss.Style) string {
-	iw := max(w-4, 20)
+	iw := max(w-4, 8)
 	cols = flexCols(cols, iw-1-max(0, len(cols)-1))
 	visible := max(1, h-2-3) // borders + title + col header + separator
 
@@ -308,7 +364,7 @@ func (m *model) viewPorts(w, h int) string {
 		{"PROCESS", 14, false, false},
 		{"WATCH", 5, false, false},
 		{"HTTP HEALTH", 0, true, false},
-	}, max(w-4, 20)-1)
+	}, max(w-4, 8)-1)
 
 	cells := func(i int) []cellSpec {
 		p := rows[i]
@@ -408,7 +464,7 @@ func (m *model) viewDocker(w, h int) string {
 		{"CPU%", 5, false, true},
 		{"MEM", 6, false, true},
 		{"MEM BAR", 0, true, false},
-	}, max(w-4, 20)-1)
+	}, max(w-4, 8)-1)
 
 	cells := func(i int) []cellSpec {
 		c := rows[i]
@@ -474,7 +530,7 @@ func (m *model) viewDisk(w, h int) string {
 		{"FILES", 7, false, true},
 		{"PROJECT", 14, false, false},
 		{"PATH", 0, true, false},
-	}, max(w-4, 20)-1)
+	}, max(w-4, 8)-1)
 
 	maxSize := uint64(1)
 	for _, a := range m.snap.Artifacts {

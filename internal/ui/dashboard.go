@@ -8,28 +8,63 @@ import (
 	"github.com/gaurav-dhakal/vibe-check/internal/engine"
 )
 
+// ringVals reads one history ring into the model scratch buffer under the
+// engine lock, so the 60fps loop allocates no history slices at all.
+func (m *model) ringVals(get func(*engine.History) *engine.Ring) []float64 {
+	m.histScr = m.eng.RingValues(get, m.histScr)
+	return m.histScr
+}
+
+// dashCols is how many panes fit side by side: six panes of task-manager
+// numbers need about 16 columns each to read, so a narrow terminal gets two
+// columns, then one, instead of six boxes whose contents wrapped.
+func dashCols(w int) int {
+	switch {
+	case w >= 96:
+		return 3
+	case w >= 44:
+		return 2
+	}
+	return 1
+}
+
 func (m *model) viewDashboard(w, h int) string {
 	if m.zoomed {
 		m.geo.panes = nil
-		return m.dashPane(m.paneSel, w, h, true)
+		return m.dashPane(m.paneSel%dashPanes, w, h, true)
 	}
-	cw1 := w * 3 / 5
-	cw2 := w - cw1
-	rh1 := h * 3 / 5
-	rh2 := h - rh1
-	top := lipgloss.JoinHorizontal(lipgloss.Top,
-		m.dashPane(0, cw1, rh1, m.paneSel == 0),
-		m.dashPane(1, cw2, rh1, m.paneSel == 1))
-	bot := lipgloss.JoinHorizontal(lipgloss.Top,
-		m.dashPane(2, cw1, rh2, m.paneSel == 2),
-		m.dashPane(3, cw2, rh2, m.paneSel == 3))
-	m.geo.panes = []rect{
-		{x: 0, y: m.geo.contentTop, w: cw1, h: rh1},
-		{x: cw1, y: m.geo.contentTop, w: cw2, h: rh1},
-		{x: 0, y: m.geo.contentTop + rh1, w: cw1, h: rh2},
-		{x: cw1, y: m.geo.contentTop + rh1, w: cw2, h: rh2},
+	nc := dashCols(w)
+	nr := (dashPanes + nc - 1) / nc
+
+	cw := make([]int, nc)
+	for c := range cw {
+		cw[c] = w / nc
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, top, bot)
+	cw[nc-1] = w - (nc-1)*(w/nc)
+	rh := make([]int, nr)
+	for r := range rh {
+		rh[r] = h / nr
+	}
+	rh[nr-1] = h - (nr-1)*(h/nr)
+
+	rows := make([]string, nr)
+	panes := make([]rect, 0, dashPanes)
+	for r := 0; r < nr; r++ {
+		cells := make([]string, 0, nc)
+		x := 0
+		for c := 0; c < nc; c++ {
+			i := r*nc + c
+			if i >= dashPanes {
+				break // only when the pane count stops dividing the columns
+			}
+			cells = append(cells, m.dashPane(i, cw[c], rh[r], m.paneSel%dashPanes == i))
+			panes = append(panes, rect{x, m.geo.contentTop + r*rh[r], cw[c], rh[r]})
+			x += cw[c]
+		}
+		rows[r] = lipgloss.JoinHorizontal(lipgloss.Top, cells...)
+	}
+	m.geo.panes = panes
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 func (m *model) dashPane(i, w, h int, active bool) string {
@@ -37,12 +72,16 @@ func (m *model) dashPane(i, w, h int, active bool) string {
 	case 1:
 		return m.paneMem(w, h, active)
 	case 2:
-		return m.paneIO(w, h, active)
+		return m.paneStorage(w, h, active)
 	case 3:
+		return m.paneIO(w, h, active)
+	case 4:
 		if len(m.snap.GPUs) > 0 {
 			return m.paneGPU(w, h, active)
 		}
 		return m.paneRuntime(w, h, active)
+	case 5:
+		return m.paneBoost(w, h, active)
 	}
 	return m.paneCPU(w, h, active)
 }
@@ -81,6 +120,8 @@ func (m *model) pctStyle(pct float64) lipgloss.Style {
 	}
 }
 
+// paneCPU is the task-manager centerpiece: total gauge, identity line,
+// then one live sparkline per core.
 func (m *model) paneCPU(w, h int, active bool) string {
 	s := m.st
 	sys := m.snap.Sys
@@ -88,33 +129,54 @@ func (m *model) paneCPU(w, h int, active bool) string {
 
 	pct := fmt.Sprintf("%5.1f%%", sys.CPUPercent)
 	head := m.pctStyle(sys.CPUPercent).Render(pct) + "  " +
-		gaugeBar(sys.CPUPercent, min(iw-lipgloss.Width(pct)-3, 30), s)
+		gaugeBar(sys.CPUPercent, min(iw-lipgloss.Width(pct)-3, 20), s)
 	if sys.CPUModel != "" {
 		head += "\n" + s.Faint.Render(truncate(sys.CPUModel, iw))
 	}
-	head += "\n" + s.Muted.Render(fmt.Sprintf("load %.2f %.2f %.2f", sys.Load1, sys.Load5, sys.Load15))
+	cores := len(sys.CorePercents)
+	ident := fmt.Sprintf("%d cores", cores)
+	if mhz := maxMHz(sys.CoreMHz); mhz > 0 {
+		ident += fmt.Sprintf(" · %.2f GHz", mhz/1000) // gopsutil reports MHz
+	}
+	head += "\n" + s.Muted.Render(fmt.Sprintf("%s · load %.2f %.2f %.2f",
+		ident, sys.Load1, sys.Load5, sys.Load15))
 
 	body := head
 	rows := h - 6 - lipgloss.Height(head)
-	n := len(sys.CorePercents)
-	barW := min(max(iw-12, 6), 22)
-	shown := min(n, max(rows, 1))
+	shown := min(cores, max(rows, 0))
+	barW := min(max(iw-14, 6), 28)
 	for i := 0; i < shown; i++ {
-		lbl := s.Faint.Render(fmt.Sprintf("c%-2d", i))
 		v := sys.CorePercents[i]
-		body += "\n" + lbl + " " + gaugeBar(v, barW, s) +
-			s.Muted.Render(rightPad(fmt.Sprintf("%4.0f", v), 5))
+		vals := m.ringVals(func(hh *engine.History) *engine.Ring {
+			if i < len(hh.CPUCores) {
+				return &hh.CPUCores[i]
+			}
+			return nil
+		})
+		body += "\n" + s.Faint.Render(fmt.Sprintf("c%-2d", i)) + " " +
+			spark01(vals, barW, m.pctStyle(v)) +
+			s.Muted.Render(rightPad(fmt.Sprintf("%4.0f", v), 6))
 	}
-	hist := m.eng.History().CPU.Values()
-	body += "\n" + spark01(hist, min(iw, max(10, h)), s.Acc2)
+	hist := m.ringVals(func(hh *engine.History) *engine.Ring { return &hh.CPU })
+	body += "\n" + spark01(hist, iw, s.Acc2)
 
 	badge := ""
 	if active && m.zoomed {
 		badge = s.Acc2.Render(" f unzoom ")
-	} else if n-shown > 0 {
-		badge = s.Faint.Render(fmt.Sprintf("+%d cores", n-shown))
+	} else if cores-shown > 0 {
+		badge = s.Faint.Render(fmt.Sprintf("+%d cores", cores-shown))
 	}
-	return s.pane("cpu", badge, w, h, active, body)
+	return s.pane("cpu · per core", badge, w, h, active, body)
+}
+
+func maxMHz(v []float64) float64 {
+	var max float64
+	for _, x := range v {
+		if x > max {
+			max = x
+		}
+	}
+	return max
 }
 
 func (m *model) paneMem(w, h int, active bool) string {
@@ -124,18 +186,18 @@ func (m *model) paneMem(w, h int, active bool) string {
 
 	pct := fmt.Sprintf("%5.1f%%", sys.MemPercent)
 	head := m.pctStyle(sys.MemPercent).Render(pct) + "  " +
-		gaugeBar(sys.MemPercent, min(iw-lipgloss.Width(pct)-3, 30), s)
+		gaugeBar(sys.MemPercent, min(iw-lipgloss.Width(pct)-3, 20), s)
 	body := head + "\n" +
 		s.Muted.Render(fmt.Sprintf("used %s / %s · avail %s",
 			engine.Bytes(sys.MemUsed), engine.Bytes(sys.MemTotal), engine.Bytes(sys.MemAvail)))
 	if sys.SwapTotal > 0 {
 		swPct := float64(sys.SwapUsed) / float64(sys.SwapTotal) * 100
 		body += "\n" + s.Faint.Render("swap") + " " +
-			gaugeBar(swPct, min(iw-14, 20), s) +
+			gaugeBar(swPct, min(iw-14, 16), s) +
 			s.Muted.Render(fmt.Sprintf(" %s/%s", engine.Bytes(sys.SwapUsed), engine.Bytes(sys.SwapTotal)))
 	}
-	hist := m.eng.History().Mem.Values()
-	body += "\n" + spark01(hist, min(iw, max(10, h)), s.Acc)
+	hist := m.ringVals(func(hh *engine.History) *engine.Ring { return &hh.Mem })
+	body += "\n" + spark01(hist, iw, s.Acc)
 
 	badge := ""
 	if sys.MemPercent > float64(m.cfg.RAMAlertPct) {
@@ -147,31 +209,80 @@ func (m *model) paneMem(w, h int, active bool) string {
 	return s.pane("memory", badge, w, h, active, body)
 }
 
+// paneStorage charts every real partition: usage gauge, per-mount numbers
+// and the total free space across all mounts.
+func (m *model) paneStorage(w, h int, active bool) string {
+	s := m.st
+	sys := m.snap.Sys
+	iw := max(w-4, 8)
+
+	var body strings.Builder
+	if len(sys.Disks) == 0 {
+		body.WriteString(s.Muted.Render("no real filesystems detected"))
+	}
+	barW := min(max(iw-34, 4), 16)
+	shown := 0
+	limit := max(1, h-7)
+	var freeTotal, sizeTotal uint64
+	for _, d := range sys.Disks {
+		if shown >= limit {
+			body.WriteString("\n" + s.Faint.Render(fmt.Sprintf("+%d more…", len(sys.Disks)-shown)))
+			break
+		}
+		free := uint64(0)
+		if d.Total > d.Used {
+			free = d.Total - d.Used
+		}
+		freeTotal += free
+		sizeTotal += d.Total
+		body.WriteString("\n" + s.Muted.Render(rightPad(truncate(d.Mount, 10), 10)) + " " +
+			gaugeBar(d.Percent, barW, s) + " " +
+			m.pctStyle(d.Percent).Render(fmt.Sprintf("%3.0f%%", d.Percent)) +
+			s.Faint.Render(" "+engine.Bytes(free)+" free") +
+			s.Muted.Render(rightPad(engine.Bytes(d.Total), 9)))
+		shown++
+	}
+	if sizeTotal > 0 {
+		body.WriteString("\n" + s.Faint.Render(strings.Repeat("·", min(iw, 16))) + "\n")
+		body.WriteString(s.Good.Render(engine.Bytes(freeTotal)) +
+			s.Muted.Render(fmt.Sprintf(" free of %s", engine.Bytes(sizeTotal))))
+	}
+	hist := m.ringVals(func(hh *engine.History) *engine.Ring { return &hh.Disk })
+	body.WriteString("\n" + spark01(hist, iw, s.Acc))
+
+	badge := ""
+	if active && m.zoomed {
+		badge = s.Acc2.Render(" f unzoom ")
+	}
+	return s.pane("disk · usage", badge, w, h, active, body.String())
+}
+
 func (m *model) paneIO(w, h int, active bool) string {
 	s := m.st
 	sys := m.snap.Sys
 	iw := max(w-4, 8)
 
-	ioRate := func(label string, bps uint64, hist []float64, sty lipgloss.Style) string {
-		bar := spark01(hist, max(6, iw-14), sty)
+	// byte-rate rings span orders of magnitude, so they need the
+	// auto-scaling sparkline, not the fixed 0-100 gauge.
+	ioRate := func(label string, bps uint64, ring func(*engine.History) *engine.Ring, sty lipgloss.Style) string {
+		bar := sparkline(m.ringVals(ring), max(6, iw-14), sty)
 		return s.Faint.Render(label) + " " +
 			s.Muted.Render(rightPad(engine.Bps(bps), 12)) + " " + bar
 	}
-	hist := m.eng.History()
-	body := ioRate("disk read ", sys.DiskReadBps, hist.DiskR.Values(), s.Acc)
-	body += "\n" + ioRate("disk write", sys.DiskWriteBps, hist.DiskW.Values(), s.Acc2)
+	body := ioRate("read  ", sys.DiskReadBps, func(hh *engine.History) *engine.Ring { return &hh.DiskR }, s.Acc)
+	body += "\n" + ioRate("write ", sys.DiskWriteBps, func(hh *engine.History) *engine.Ring { return &hh.DiskW }, s.Acc2)
 	body += "\n" + s.Faint.Render(strings.Repeat("·", min(iw, 16)))
-	body += "\n" + ioRate("net down  ", sys.NetRecvBps, hist.NetR.Values(), s.Good)
-	body += "\n" + ioRate("net up    ", sys.NetSentBps, hist.NetW.Values(), s.Info)
+	body += "\n" + ioRate("down  ", sys.NetRecvBps, func(hh *engine.History) *engine.Ring { return &hh.NetR }, s.Good)
+	body += "\n" + ioRate("up    ", sys.NetSentBps, func(hh *engine.History) *engine.Ring { return &hh.NetW }, s.Info)
 	if sys.FDMax > 0 {
 		fdLine := s.Faint.Render("fd ") +
 			s.Muted.Render(fmt.Sprintf("%d", sys.FDAlloc))
 		if sys.FDMax < 1<<30 {
 			fdPct := float64(sys.FDAlloc) / float64(sys.FDMax) * 100
-			fdLine += " " + gaugeBar(fdPct, max(8, iw-24), s) +
-				s.Muted.Render(fmt.Sprintf(" /%d · %d avg/proc", sys.FDMax, sys.FDPerProc))
+			fdLine += " " + gaugeBar(fdPct, max(6, iw-24), s) +
+				s.Muted.Render(fmt.Sprintf(" /%d", sys.FDMax))
 		} else {
-			fdLine += s.Muted.Render(fmt.Sprintf(" · unlimited cap · %d avg/proc", sys.FDPerProc))
+			fdLine += s.Muted.Render(" · unlimited cap")
 		}
 		body += "\n" + fdLine
 	}
@@ -179,12 +290,11 @@ func (m *model) paneIO(w, h int, active bool) string {
 	if active && m.zoomed {
 		badge = s.Acc2.Render(" f unzoom ")
 	}
-	return s.pane("i/o · fd", badge, w, h, active, body)
+	return s.pane("i/o · net", badge, w, h, active, body)
 }
 
 func (m *model) paneRuntime(w, h int, active bool) string {
 	s := m.st
-	sys := m.snap.Sys
 	iw := max(w-4, 12)
 
 	run, total := 0, len(m.snap.Containers)
@@ -202,7 +312,7 @@ func (m *model) paneRuntime(w, h int, active bool) string {
 		b.WriteString(s.Good.Render(fmt.Sprintf("● %d running", run)) +
 			s.Faint.Render(fmt.Sprintf(" / %d total", total)) + "\n")
 		for i, c := range m.snap.Containers {
-			if i >= max(0, h-10) || i >= 8 {
+			if i >= max(0, h-8) || i >= 6 {
 				b.WriteString(s.Faint.Render(fmt.Sprintf("  +%d more…", total-i)) + "\n")
 				break
 			}
@@ -215,12 +325,6 @@ func (m *model) paneRuntime(w, h int, active bool) string {
 	}
 	b.WriteString(s.Faint.Render("ports ") +
 		s.Muted.Render(fmt.Sprintf("%d listeners", len(m.snap.Ports))))
-	if n := sys.OrphanCount; n > 0 {
-		b.WriteString("\n" + s.Warn.Render(fmt.Sprintf("⚠ %d orphans · %s", n, engine.Bytes(sys.OrphanRSS))) +
-			s.Faint.Render("  x kill all"))
-	} else {
-		b.WriteString("\n" + s.Good.Render("✔ no orphaned dev servers"))
-	}
 	var artTotal uint64
 	for _, a := range m.snap.Artifacts {
 		artTotal += a.Size
@@ -229,10 +333,7 @@ func (m *model) paneRuntime(w, h int, active bool) string {
 	if m.snap.ScanState.Scanning {
 		scanBadge = s.Acc.Render(m.spinFrame() + " scanning…")
 	}
-	b.WriteString("\n" + s.Faint.Render("disk  ") + scanBadge)
-	if m.filter != "" {
-		b.WriteString("\n" + s.Acc2.Render("/ "+m.filter))
-	}
+	b.WriteString("\n" + s.Faint.Render("junk  ") + scanBadge)
 
 	badge := ""
 	if active && m.zoomed {
@@ -256,13 +357,13 @@ func (m *model) paneGPU(w, h int, active bool) string {
 		}
 		pct := fmt.Sprintf("%5.1f%%", g.UtilPercent)
 		b.WriteString(m.pctStyle(g.UtilPercent).Render(pct) + "  " +
-			gaugeBar(g.UtilPercent, min(iw-lipgloss.Width(pct)-3, 30), s) + "\n")
+			gaugeBar(g.UtilPercent, min(iw-lipgloss.Width(pct)-3, 20), s) + "\n")
 		b.WriteString(s.Faint.Render(truncate(g.Name, iw)) + "\n")
 		if g.MemTotal > 0 {
 			mp := float64(g.MemUsed) / float64(g.MemTotal) * 100
 			b.WriteString(s.Muted.Render(fmt.Sprintf("vram %s / %s",
 				engine.Bytes(g.MemUsed), engine.Bytes(g.MemTotal))) + "\n")
-			b.WriteString(gaugeBar(mp, min(iw-4, 24), s) + "\n")
+			b.WriteString(gaugeBar(mp, min(iw-4, 20), s) + "\n")
 		}
 		if g.HasTemp {
 			b.WriteString(s.Muted.Render(fmt.Sprintf("temp %.0f°C", g.TempC)) + "\n")
@@ -274,4 +375,50 @@ func (m *model) paneGPU(w, h int, active bool) string {
 		badge = s.Acc2.Render(" f unzoom ")
 	}
 	return s.pane("gpu", badge, w, h, active, b.String())
+}
+
+// paneBoost is the productivity cockpit: every reclaim lever with live
+// numbers and the key to pull it.
+func (m *model) paneBoost(w, h int, active bool) string {
+	s := m.st
+	floor := uint64(m.cfg.AutoCleanJunkMB) << 20
+
+	var junk, junkBytes uint64
+	for _, a := range m.snap.Artifacts {
+		if a.Size >= floor {
+			junk++
+			junkBytes += a.Size
+		}
+	}
+
+	kc := func(k, v string) string { return s.Acc.Render(k) + s.KeyHint.Render(" "+v) }
+	var b strings.Builder
+	if n := m.snap.Sys.OrphanCount; n > 0 {
+		b.WriteString(s.Warn.Render(fmt.Sprintf("⚠ %d orphans", n)) +
+			s.Muted.Render(" "+engine.Bytes(m.snap.Sys.OrphanRSS)+" RAM") + "\n")
+		b.WriteString(kc("x", "kill them all") + "\n")
+	} else {
+		b.WriteString(s.Good.Render("✔ no orphaned dev servers") + "\n")
+	}
+	if junk > 0 {
+		b.WriteString(s.Warn.Render(fmt.Sprintf("⚠ %d junk dirs", junk)) +
+			s.Muted.Render(fmt.Sprintf(" ≥%dMB · %s", m.cfg.AutoCleanJunkMB, engine.Bytes(junkBytes))) + "\n")
+	} else {
+		b.WriteString(s.Muted.Render(fmt.Sprintf("build junk above %dMB: none", m.cfg.AutoCleanJunkMB)) + "\n")
+	}
+	b.WriteString(kc("c", "boost & clean sweep") + "\n")
+	if m.eng.AutoClean() {
+		b.WriteString(s.badgePill("auto-clean ON", s.th.Good) + "\n")
+	} else {
+		b.WriteString(s.Faint.Render("auto-clean off") + "\n")
+	}
+	b.WriteString(kc("C", "toggle auto-clean") + "\n")
+	b.WriteString(kc("b", "drop page cache (root)") + "\n")
+	b.WriteString(s.Muted.Render(fmt.Sprintf("free RAM: %s", engine.Bytes(m.snap.Sys.MemAvail))))
+
+	badge := ""
+	if active && m.zoomed {
+		badge = s.Acc2.Render(" f unzoom ")
+	}
+	return s.pane("boost · clean", badge, w, h, active, b.String())
 }

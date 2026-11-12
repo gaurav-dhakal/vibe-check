@@ -49,8 +49,20 @@ type System struct {
 	FDPerProc int    `json:"fd_per_proc"` // avg open fds across readable procs
 	FDCount   int    `json:"fd_count"`    // fds readable without root
 
+	Disks   []DiskUsage `json:"disks,omitempty"`
+	CoreMHz []float64   `json:"core_mhz,omitempty"`
+
 	OrphanCount int    `json:"orphan_count"`
 	OrphanRSS   uint64 `json:"orphan_rss"`
+}
+
+// DiskUsage is one real (non-virtual) filesystem's space state.
+type DiskUsage struct {
+	Mount   string  `json:"mount"`
+	Fstype  string  `json:"fstype"`
+	Total   uint64  `json:"total"`
+	Used    uint64  `json:"used"`
+	Percent float64 `json:"percent"`
 }
 
 type Proc struct {

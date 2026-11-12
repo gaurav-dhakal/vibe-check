@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -119,10 +120,14 @@ func NewStyles(th *theme.Theme) *Styles {
 const sparkChars = "▁▂▃▄▅▆▇█"
 const fracChars = " ▏▎▍▌▋▊▉█"
 
+// sparkLevels is sparkChars as cells: len(sparkChars) counts bytes, and the
+// blocks are three bytes each, so the byte count must never index the glyphs.
+var sparkLevels = []rune(sparkChars)
+
 // sparkline renders values across width columns using block chars.
 func sparkline(vals []float64, width int, sty lipgloss.Style) string {
 	if len(vals) == 0 || width <= 0 {
-		return sty.Render(strings.Repeat("▁", min(width, 8)))
+		return sty.Render(strings.Repeat("▁", min(width, len(sparkLevels))))
 	}
 	if len(vals) > width {
 		vals = vals[len(vals)-width:]
@@ -140,15 +145,13 @@ func sparkline(vals []float64, width int, sty lipgloss.Style) string {
 	var b strings.Builder
 	for _, v := range vals {
 		idx := 0
-		if span > 0 {
-			idx = int((v - lo) / span * float64(len(sparkChars)-1))
-		} else if v > 0 {
-			idx = len(sparkChars) / 2
+		switch {
+		case span > 0 && !math.IsNaN(v):
+			idx = int((v - lo) / span * float64(len(sparkLevels)-1))
+		case span <= 0 && v > 0:
+			idx = len(sparkLevels) / 2
 		}
-		if idx >= len(sparkChars) {
-			idx = len(sparkChars) - 1
-		}
-		b.WriteString(string([]rune(sparkChars)[idx]))
+		b.WriteRune(sparkLevels[clamp(idx, 0, len(sparkLevels)-1)])
 	}
 	for b.Len() < width*len("█") && len(vals) < width { // pad narrow history
 		b.WriteString("▁")
@@ -229,8 +232,18 @@ func (s *Styles) pane(title, badgeStr string, w, h int, active bool, body string
 		boxStyle = s.PaneActive
 	}
 	boxStyle = boxStyle.Width(max(0, w-2)).Height(max(0, h-2)).MaxHeight(h)
+	// The header gets the content width, which is w-4: two columns of border
+	// and one of padding on each side. Handing it w-2 made the title line two
+	// cells wider than the box and lipgloss wrapped the tail onto row 2.
+	iw := max(1, w-4)
+	lines := strings.Split(body, "\n")
+	for i, l := range lines {
+		if ansiWidth(l) > iw {
+			lines[i] = ansiCut(l, 0, iw)
+		}
+	}
 	return boxStyle.Render(lipgloss.JoinVertical(lipgloss.Left,
-		s.paneHeader(title, badgeStr, w-2), body))
+		s.paneHeader(title, badgeStr, iw), strings.Join(lines, "\n")))
 }
 
 func (s *Styles) paneHeader(title, badgeStr string, w int) string {
